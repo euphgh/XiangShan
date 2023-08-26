@@ -6,7 +6,7 @@
 * You can use this software according to the terms and conditions of the Mulan PSL v2.
 * You may obtain a copy of Mulan PSL v2 at:
 *          http://license.coscl.org.cn/MulanPSL2
-*
+
 * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
 * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
@@ -20,282 +20,369 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.internal.naming.chiselName
 import chisel3.util._
+import difftest._
 import freechips.rocketchip.util.SRAMAnnotation
 import xiangshan._
 import utils._
-import xiangshan.backend.fu.{PMPChecker, PMPReqBundle}
+import utility._
+import xiangshan.backend.fu.{PMPChecker, PMPReqBundle, PMPConfig => XSPMPConfig}
 import xiangshan.backend.rob.RobPtr
 import xiangshan.backend.fu.util.HasCSRConst
+import firrtl.FirrtlProtos.Firrtl.Module.ExternalModule.Parameter
+import freechips.rocketchip.rocket.PMPConfig
 
+/** TLB module
+  * support block request and non-block request io at the same time
+  * return paddr at next cycle, then go for pmp/pma check
+  * @param Width: The number of requestors
+  * @param Block: Blocked or not for each requestor ports
+  * @param q: TLB Parameters, like entry number, each TLB has its own parameters
+  * @param p: XiangShan Paramemters, like XLEN
+  */
 
 @chiselName
-class TLB(Width: Int, nRespDups: Int = 1, q: TLBParameters)(implicit p: Parameters) extends TlbModule with HasCSRConst with HasPerfEvents {
+class TLB(Width: Int, nRespDups: Int = 1, Block: Seq[Boolean], q: TLBParameters)(implicit p: Parameters) extends TlbModule
+  with HasCSRConst
+  with HasPerfEvents
+{
   val io = IO(new TlbIO(Width, nRespDups, q))
-
-  require(q.superAssociative == "fa")
-  if (q.sameCycle || q.missSameCycle) {
-    require(q.normalAssociative == "fa")
-  }
 
   val req = io.requestor.map(_.req)
   val resp = io.requestor.map(_.resp)
   val ptw = io.ptw
   val pmp = io.pmp
-  val ptw_resp = if (q.sameCycle) RegNext(ptw.resp.bits) else ptw.resp.bits
-  val ptw_resp_v = if (q.sameCycle) RegNext(ptw.resp.valid, init = false.B) else ptw.resp.valid
+  val refill_to_mem = io.refill_to_mem
 
-  val mode_tmp = if (q.useDmode) io.csr.priv.dmode else io.csr.priv.imode
-  val mode_dup = Seq.fill(Width)(RegNext(mode_tmp))
-  val vmEnable_tmp = if (EnbaleTlbDebug) (io.csr.satp.mode === 8.U)
-    else (io.csr.satp.mode === 8.U && (mode_tmp < ModeM))
-  val vmEnable_dup = Seq.fill(Width)(RegNext(vmEnable_tmp))
-  val sfence_dup = Seq.fill(2)(RegNext(io.sfence))
-  val csr_dup = Seq.fill(Width)(RegNext(io.csr))
-  val satp = csr_dup.head.satp
-  val priv = csr_dup.head.priv
+  /** Sfence.vma & Svinval
+    * Sfence.vma will 1. flush old entries 2. flush inflight 3. flush pipe
+    * Svinval will 1. flush old entries 2. flush inflight
+    * So, Svinval will not flush pipe, which means
+    * it should not drop reqs from pipe and should return right resp
+    */
+  val sfence = DelayN(io.sfence, q.fenceDelay)
+  val csr = io.csr
+  val satp = DelayN(io.csr.satp, q.fenceDelay)
+  val vsatp = DelayN(io.csr.vsatp, q.fenceDelay)
+  val hgatp = DelayN(io.csr.hgatp, q.fenceDelay)
+  val isHyperInst = (0 until Width).map(i => ValidHold(req(i).fire && !req(i).bits.kill && req(i).bits.hyperinst, resp(i).fire, flush_pipe(i)))
+  val isHlvx = (0 until Width).map(i => ValidHold(req(i).fire && !req(i).bits.kill && req(i).bits.hlvx, resp(i).fire, flush_pipe(i)))
+  val onlyS2xlate = vsatp.mode === 0.U && hgatp.mode === 8.U
+
+  val flush_mmu = DelayN(sfence.valid || csr.satp.changed || csr.vsatp.changed || csr.hgatp.changed, q.fenceDelay)
+  val mmu_flush_pipe = DelayN(sfence.valid && sfence.bits.flushPipe, q.fenceDelay) // for svinval, won't flush pipe
+  val flush_pipe = io.flushPipe
+
+  // ATTENTION: csr and flush from backend are delayed. csr should not be later than flush.
+  // because, csr will influence tlb behavior.
   val ifecth = if (q.fetchi) true.B else false.B
+  val mode_tmp = if (q.useDmode) csr.priv.dmode else csr.priv.imode
+  val mode = (0 until Width).map(i => Mux(isHyperInst(i), csr.priv.spvp, mode_tmp))
+  val virt = csr.priv.virt
+  val sum = (0 until Width).map(i => Mux(virt || isHyperInst(i), io.csr.priv.vsum, io.csr.priv.sum))
+  val mxr = (0 until Width).map(i => Mux(virt || isHyperInst(i), io.csr.priv.vmxr || io.csr.priv.mxr, io.csr.priv.mxr))
 
-  val reqAddr = req.map(_.bits.vaddr.asTypeOf(new VaBundle))
-  val vpn = reqAddr.map(_.vpn)
-  val cmd = req.map(_.bits.cmd)
-  val valid = req.map(_.valid)
+  // val vmEnable = satp.mode === 8.U // && (mode < ModeM) // FIXME: fix me when boot xv6/linux...
+  val vmEnable = (0 until Width).map(i => if (EnbaleTlbDebug) (satp.mode === 8.U)
+    else (satp.mode === 8.U) && (mode(i) < ModeM))
+  val s2xlateEnable = (0 until Width).map(i => (isHyperInst(i) || virt) && (vsatp.mode === 8.U || hgatp.mode === 8.U) && (mode(i) < ModeM))
+  val portTranslateEnable = (0 until Width).map(i => (vmEnable(i) || s2xlateEnable(i)) && RegNext(!req(i).bits.no_translate))
 
-  def widthMapSeq[T <: Seq[Data]](f: Int => T) = (0 until Width).map(f)
+  val req_in = req
+  val req_out = req.map(a => RegEnable(a.bits, a.fire()))
+  val req_out_v = (0 until Width).map(i => ValidHold(req_in(i).fire && !req_in(i).bits.kill, resp(i).fire, flush_pipe(i)))
 
-  def widthMap[T <: Data](f: Int => T) = (0 until Width).map(f)
+  val refill = (0 until Width).map(i => ptw.resp.fire() && !flush_mmu && (vmEnable(i) || ptw.resp.bits.s2xlate(0))
 
-  // Normal page && Super page
-  val normalPage = TlbStorage(
-    name = "normal",
-    associative = q.normalAssociative,
-    sameCycle = q.sameCycle,
-    ports = Width,
-    nSets = q.normalNSets,
-    nWays = q.normalNWays,
-    nDups = nRespDups,
-    saveLevel = q.saveLevel,
-    normalPage = true,
-    superPage = false
-  )
-  val superPage = TlbStorage(
-    name = "super",
-    associative = q.superAssociative,
-    sameCycle = q.sameCycle,
-    ports = Width,
-    nSets = q.superNSets,
-    nWays = q.superNWays,
-    saveLevel = q.saveLevel,
-    normalPage = q.normalAsVictim,
-    superPage = true,
-  )
-
-
+  val entries = Module(new TlbStorageWrapper(Width, q, nRespDups))
+  entries.io.base_connect(sfence, csr, satp)
+  if (q.outReplace) { io.replace <> entries.io.replace }
   for (i <- 0 until Width) {
-    normalPage.r_req_apply(
-      valid = io.requestor(i).req.valid,
-      vpn = vpn(i),
-      asid = csr_dup(i).satp.asid,
-      i = i
-    )
-    superPage.r_req_apply(
-      valid = io.requestor(i).req.valid,
-      vpn = vpn(i),
-      asid = csr_dup(i).satp.asid,
-      i = i
-    )
+    val s2xlate = Wire(UInt(2.W))
+    s2xlate(0) := virt || req_in(i).bits.hyperinst
+    s2xlate(1) := s2xlate(0) && vsatp.mode === 0.U && hgatp.mode === 8.U
+    entries.io.r_req_apply(io.requestor(i).req.valid, get_pn(req_in(i).bits.vaddr), i, s2xlate)
+    entries.io.w_apply(refill, ptw.resp.bits, io.ptw_replenish)
+    resp(i).bits.debug.isFirstIssue := RegNext(req(i).bits.debug.isFirstIssue)
+    resp(i).bits.debug.robIdx := RegNext(req(i).bits.debug.robIdx)
   }
 
-  normalPage.victim.in <> superPage.victim.out
-  normalPage.victim.out <> superPage.victim.in
-  normalPage.sfence <> sfence_dup(0)
-  superPage.sfence <> sfence_dup(1)
-  normalPage.csr <> csr_dup(0)
-  superPage.csr <> csr_dup(1)
-
-  val refill_now = ptw_resp_v
-  def TLBNormalRead(i: Int) = {
-    val (n_hit_sameCycle, normal_hit, normal_ppn, normal_perm) = normalPage.r_resp_apply(i)
-    val (s_hit_sameCycle, super_hit, super_ppn, super_perm) = superPage.r_resp_apply(i)
-    // assert(!(normal_hit && super_hit && vmEnable_dup(i) && RegNext(req(i).valid, init = false.B)))
-
-    val hit = normal_hit || super_hit
-    val hit_sameCycle = n_hit_sameCycle || s_hit_sameCycle
-    val cmdReg = if (!q.sameCycle) RegNext(cmd(i)) else cmd(i)
-    val validReg = if (!q.sameCycle) RegNext(valid(i)) else valid(i)
-    val offReg = if (!q.sameCycle) RegNext(reqAddr(i).off) else reqAddr(i).off
-    val sizeReg = if (!q.sameCycle) RegNext(req(i).bits.size) else req(i).bits.size
-
-    /** *************** next cycle when two cycle is false******************* */
-    val miss = !hit && vmEnable_dup(i)
-    val fast_miss = !super_hit && vmEnable_dup(i)
-    val miss_sameCycle = (!hit_sameCycle || refill_now) && vmEnable_dup(i)
-    hit.suggestName(s"hit_${i}")
-    miss.suggestName(s"miss_${i}")
-
-    val vaddr = SignExt(req(i).bits.vaddr, PAddrBits)
-    req(i).ready := resp(i).ready
-    resp(i).valid := validReg
-    resp(i).bits.miss := { if (q.missSameCycle) miss_sameCycle else miss }
-    resp(i).bits.fast_miss := fast_miss
-    resp(i).bits.ptwBack := ptw.resp.fire()
-
-    // for timing optimization, pmp check is divided into dynamic and static
-    // dynamic: superpage (or full-connected reg entries) -> check pmp when translation done
-    // static: 4K pages (or sram entries) -> check pmp with pre-checked results
-    val pmp_paddr = Mux(vmEnable_dup(i), Cat(super_ppn(0), offReg), if (!q.sameCycle) RegNext(vaddr) else vaddr)
-    pmp(i).valid := resp(i).valid
-    pmp(i).bits.addr := pmp_paddr
-    pmp(i).bits.size := sizeReg
-    pmp(i).bits.cmd := cmdReg
-
-    resp(i).bits.static_pm.valid := !super_hit && vmEnable_dup(i) && q.partialStaticPMP.B // ls/st unit should use this mmio, not the result from pmp
-    resp(i).bits.static_pm.bits := !normal_perm(0).pm.c
-
-    // duplicate resp part
-    for (d <- 0 until nRespDups) {
-      val ppn = Mux(super_hit, super_ppn(0), normal_ppn(d))
-      val perm = Mux(super_hit, super_perm(0), normal_perm(d))
-
-      val pf = perm.pf
-      val af = perm.af
-      val paddr = Cat(ppn, offReg)
-      resp(i).bits.paddr(d) := Mux(vmEnable_dup(i), paddr, if (!q.sameCycle) RegNext(vaddr) else vaddr)
-
-      val ldUpdate = !perm.a && TlbCmd.isRead(cmdReg) && !TlbCmd.isAmo(cmdReg) // update A/D through exception
-      val stUpdate = (!perm.a || !perm.d) && (TlbCmd.isWrite(cmdReg) || TlbCmd.isAmo(cmdReg)) // update A/D through exception
-      val instrUpdate = !perm.a && TlbCmd.isExec(cmdReg) // update A/D through exception
-      val modeCheck = !(mode_dup(i) === ModeU && !perm.u || mode_dup(i) === ModeS && perm.u && (!priv.sum || ifecth))
-      val ldPermFail = !(modeCheck && (perm.r || priv.mxr && perm.x))
-      val stPermFail = !(modeCheck && perm.w)
-      val instrPermFail = !(modeCheck && perm.x)
-      val ldPf = (ldPermFail || pf) && (TlbCmd.isRead(cmdReg) && !TlbCmd.isAmo(cmdReg))
-      val stPf = (stPermFail || pf) && (TlbCmd.isWrite(cmdReg) || TlbCmd.isAmo(cmdReg))
-      val instrPf = (instrPermFail || pf) && TlbCmd.isExec(cmdReg)
-      val fault_valid = vmEnable_dup(i)
-      resp(i).bits.excp(d).pf.ld := (ldPf || ldUpdate) && fault_valid && !af
-      resp(i).bits.excp(d).pf.st := (stPf || stUpdate) && fault_valid && !af
-      resp(i).bits.excp(d).pf.instr := (instrPf || instrUpdate) && fault_valid && !af
-      // NOTE: pf need && with !af, page fault has higher priority than access fault
-      // but ptw may also have access fault, then af happens, the translation is wrong.
-      // In this case, pf has lower priority than af
-
-      val spm = normal_perm(d).pm // static physical memory protection or attribute
-      val spm_v = !super_hit && vmEnable_dup(i) && q.partialStaticPMP.B // static pm valid; do not use normal_hit, it's too long.
-      // for tlb without sram, tlb will miss, pm should be ignored outsize
-      resp(i).bits.excp(d).af.ld    := (af || (spm_v && !spm.r)) && TlbCmd.isRead(cmdReg) && fault_valid
-      resp(i).bits.excp(d).af.st    := (af || (spm_v && !spm.w)) && TlbCmd.isWrite(cmdReg) && fault_valid
-      resp(i).bits.excp(d).af.instr := (af || (spm_v && !spm.x)) && TlbCmd.isExec(cmdReg) && fault_valid
-    }
-
-    (hit, miss, validReg)
-  }
-
-  val readResult = (0 until Width).map(TLBNormalRead(_))
+  // read TLB, get hit/miss, paddr, perm bits
+  val readResult = (0 until Width).map(TLBRead(_))
   val hitVec = readResult.map(_._1)
   val missVec = readResult.map(_._2)
-  val validRegVec = readResult.map(_._3)
-
-  // replacement
-  def get_access(one_hot: UInt, valid: Bool): Valid[UInt] = {
-    val res = Wire(Valid(UInt(log2Up(one_hot.getWidth).W)))
-    res.valid := Cat(one_hot).orR && valid
-    res.bits := OHToUInt(one_hot)
-    res
-  }
-
-  val normal_refill_idx = if (q.outReplace) {
-    io.replace.normalPage.access <> normalPage.access
-    io.replace.normalPage.chosen_set := get_set_idx(ptw_resp.entry.tag, q.normalNSets)
-    io.replace.normalPage.refillIdx
-  } else if (q.normalAssociative == "fa") {
-    val re = ReplacementPolicy.fromString(q.normalReplacer, q.normalNWays)
-    re.access(normalPage.access.map(_.touch_ways)) // normalhitVecVec.zipWithIndex.map{ case (hv, i) => get_access(hv, validRegVec(i))})
-    re.way
-  } else { // set-acco && plru
-    val re = ReplacementPolicy.fromString(q.normalReplacer, q.normalNSets, q.normalNWays)
-    re.access(normalPage.access.map(_.sets), normalPage.access.map(_.touch_ways))
-    re.way(get_set_idx(ptw_resp.entry.tag, q.normalNSets))
-  }
-
-  val super_refill_idx = if (q.outReplace) {
-    io.replace.superPage.access <> superPage.access
-    io.replace.superPage.chosen_set := DontCare
-    io.replace.superPage.refillIdx
-  } else {
-    val re = ReplacementPolicy.fromString(q.superReplacer, q.superNWays)
-    re.access(superPage.access.map(_.touch_ways))
-    re.way
-  }
-
-  val refill = ptw_resp_v && !sfence_dup.head.valid && !satp.changed
-  normalPage.w_apply(
-    valid = { if (q.normalAsVictim) false.B
-    else refill && ptw_resp.entry.is_normalentry()},
-    wayIdx = normal_refill_idx,
-    data = ptw_resp,
-    data_replenish = io.ptw_replenish
-  )
-  superPage.w_apply(
-    valid = { if (q.normalAsVictim) refill
-    else refill && !ptw_resp.entry.is_normalentry()},
-    wayIdx = super_refill_idx,
-    data = ptw_resp,
-    data_replenish = io.ptw_replenish
-  )
-
-  // if sameCycle, just req.valid
-  // if !sameCycle, add one more RegNext based on !sameCycle's RegNext
-  // because sram is too slow and dtlb is too distant from dtlbRepeater
-  for (i <- 0 until Width) {
-    io.ptw.req(i).valid :=  need_RegNextInit(!q.sameCycle, validRegVec(i) && missVec(i), false.B) &&
-      !RegNext(refill, init = false.B) &&
-      param_choose(!q.sameCycle, !RegNext(RegNext(refill, init = false.B), init = false.B), true.B)
-    when (RegEnable(io.requestor(i).req_kill, RegNext(io.requestor(i).req.fire))) {
-      io.ptw.req(i).valid := false.B
+  val pmp_addr = readResult.map(_._3)
+  val static_pm = readResult.map(_._4)
+  val static_pm_v = readResult.map(_._5)
+  val perm = readResult.map(_._6)
+  val g_perm = readResult.map(_._7)
+  val s2xlate = readResult.map(_._8)
+  // check pmp use paddr (for timing optization, use pmp_addr here)
+  // check permisson
+  (0 until Width).foreach{i =>
+    pmp_check(pmp_addr(i), req_out(i).size, req_out(i).cmd, i)
+    for (d <- 0 until nRespDups) {
+      perm_check(perm(i)(d), req_out(i).cmd, static_pm(i), static_pm_v(i), i, d, g_perm(i)(d), req_out(i).hlvx, s2xlate(i))
     }
-    io.ptw.req(i).bits.vpn := need_RegNext(!q.sameCycle, need_RegNext(!q.sameCycle, reqAddr(i).vpn))
+  }
+
+  // handle block or non-block io
+  // for non-block io, just return the above result, send miss to ptw
+  // for block io, hold the request, send miss to ptw,
+  //   when ptw back, return the result
+  (0 until Width) foreach {i =>
+    if (Block(i)) handle_block(i)
+    else handle_nonblock(i)
   }
   io.ptw.resp.ready := true.B
 
-  def need_RegNext[T <: Data](need: Boolean, data: T): T = {
-    if (need) RegNext(data)
-    else data
-  }
-  def need_RegNextInit[T <: Data](need: Boolean, data: T, init_value: T): T = {
-    if (need) RegNext(data, init = init_value)
-    else data
+  /************************  main body above | method/log/perf below ****************************/
+  def TLBRead(i: Int) = {
+    val s2xlate = Wire(UInt(2.W))
+    s2xlate(0) := virt || req_in(i).bits.hyperinst
+    s2xlate(1) := s2xlate(0) && vsatp.mode === 0.U && hgatp.mode === 8.U
+    val (e_hit, e_ppn, e_perm, e_super_hit, e_super_ppn, static_pm, e_gvpn, e_g_perm, e_s2xlate) = entries.io.r_resp_apply(i)
+    val (p_hit, p_ppn, p_perm, p_gvpn, p_g_perm, p_s2xlate) = ptw_resp_bypass(get_pn(req_in(i).bits.vaddr), s2xlate)
+    val enable = portTranslateEnable(i)
+
+    val hit = e_hit || p_hit
+    val miss = !hit && enable
+    val fast_miss = !(e_super_hit || p_hit) && enable
+    hit.suggestName(s"hit_read_${i}")
+    miss.suggestName(s"miss_read_${i}")
+
+    val vaddr = SignExt(req_out(i).vaddr, PAddrBits)
+    resp(i).bits.miss := miss
+    resp(i).bits.fast_miss := fast_miss
+    resp(i).bits.ptwBack := ptw.resp.fire()
+    resp(i).bits.memidx := RegNext(req_in(i).bits.memidx)
+
+    val ppn = WireInit(VecInit(Seq.fill(nRespDups)(0.U(ppnLen.W))))
+    val perm = WireInit(VecInit(Seq.fill(nRespDups)(0.U.asTypeOf(new TlbPermBundle))))
+    val gvpn = WireInit(VecInit(Seq.fill(nRespDups)(0.U(gvpnLen.W))))
+    val g_perm = WireInit(VecInit(Seq.fill(nRespDups)(0.U.asTypeOf(new TlbPermBundle))))
+    for (d <- 0 until nRespDups) {
+      ppn(d) := Mux(p_hit, p_ppn, e_ppn(d))
+      perm(d) := Mux(p_hit, p_perm, e_perm(d))
+      gvpn(d) := Mux(p_hit, p_gvpn, e_gvpn(d))
+      g_perm(d) := Mux(p_hit, p_g_perm, e_g_perm(d))
+      s2xlate(d) := Mux(p_hit, p_s2xlate, e_s2xlate(d))
+      val paddr = Cat(ppn(d), get_off(req_out(i).vaddr))
+      val gpaddr = Cat(gvpn(d), get_off(req_out(i).vaddr))
+      resp(i).bits.paddr(d) := Mux(enable, paddr, vaddr)
+      resp(i).bits.gpaddr(d) := gpaddr
+    }
+
+    XSDebug(req_out_v(i), p"(${i.U}) hit:${hit} miss:${miss} ppn:${Hexadecimal(ppn(0))} perm:${perm(0)}\n")
+
+    val pmp_paddr = Mux(enable, Cat(Mux(p_hit, p_ppn, e_super_ppn), get_off(req_out(i).vaddr)), vaddr)
+    // pmp_paddr seems same to paddr functionally. It abandons normal_ppn for timing optimization.
+    // val pmp_paddr = Mux(enable, paddr, vaddr)
+    val static_pm_valid = !(e_super_hit || p_hit) && enable && q.partialStaticPMP.B
+
+    (hit, miss, pmp_paddr, static_pm, static_pm_valid, perm, g_perm, s2xlate)
   }
 
-  def param_choose[T <: Data](need: Boolean, truedata: T, falsedata: T): T = {
-    if (need) truedata
-    else falsedata
+  def pmp_check(addr: UInt, size: UInt, cmd: UInt, idx: Int): Unit = {
+    pmp(idx).valid := resp(idx).valid
+    pmp(idx).bits.addr := addr
+    pmp(idx).bits.size := size
+    pmp(idx).bits.cmd := cmd
   }
 
-  if (!q.shouldBlock) {
-    for (i <- 0 until Width) {
-      XSPerfAccumulate("first_access" + Integer.toString(i, 10), validRegVec(i) && vmEnable_dup.head && RegNext(req(i).bits.debug.isFirstIssue))
-      XSPerfAccumulate("access" + Integer.toString(i, 10), validRegVec(i) && vmEnable_dup.head)
-    }
-    for (i <- 0 until Width) {
-      XSPerfAccumulate("first_miss" + Integer.toString(i, 10), validRegVec(i) && vmEnable_dup.head && missVec(i) && RegNext(req(i).bits.debug.isFirstIssue))
-      XSPerfAccumulate("miss" + Integer.toString(i, 10), validRegVec(i) && vmEnable_dup.head && missVec(i))
-    }
-  } else {
-    // NOTE: ITLB is blocked, so every resp will be valid only when hit
-    // every req will be ready only when hit
-    for (i <- 0 until Width) {
-      XSPerfAccumulate(s"access${i}", io.requestor(i).req.fire() && vmEnable_dup.head)
-      XSPerfAccumulate(s"miss${i}", ptw.req(i).fire())
-    }
+  def perm_check(perm: TlbPermBundle, cmd: UInt, spm: TlbPMBundle, spm_v: Bool, idx: Int, nDups: Int, g_perm: TlbPermBundle, hlvx: Bool, s2xlate: UInt) = {
+    // for timing optimization, pmp check is divided into dynamic and static
+    // dynamic: superpage (or full-connected reg entries) -> check pmp when translation done
+    // static: 4K pages (or sram entries) -> check pmp with pre-checked results
+    val hasS2xlate = s2xlate(0) === 1.U
+    val onlyS2 = s2xlate === 11.U
+    val af = perm.af || (hasS2xlate && g_perm.af)
 
+    // Stage 1 perm check
+    val pf = perm.pf
+    val ldUpdate = !perm.a && TlbCmd.isRead(cmd) && !TlbCmd.isAmo(cmd) // update A/D through exception
+    val stUpdate = (!perm.a || !perm.d) && (TlbCmd.isWrite(cmd) || TlbCmd.isAmo(cmd)) // update A/D through exception
+    val instrUpdate = !perm.a && TlbCmd.isExec(cmd) // update A/D through exception
+    val modeCheck = !(mode(idx) === ModeU && !perm.u || mode(idx) === ModeS && perm.u && (!sum(idx) || ifecth))
+    val ldPermFail = !(modeCheck && (perm.r || mxr(idx) && perm.x))
+    val stPermFail = !(modeCheck && perm.w)
+    val instrPermFail = !(modeCheck && perm.x)
+    val ldPf = (ldPermFail || pf) && (TlbCmd.isRead(cmd) && !TlbCmd.isAmo(cmd))
+    val stPf = (stPermFail || pf) && (TlbCmd.isWrite(cmd) || TlbCmd.isAmo(cmd))
+    val instrPf = (instrPermFail || pf) && TlbCmd.isExec(cmd)
+    val s1_valid = portTranslateEnable(idx) && !onlyS2
+
+    // Stage 2 perm check
+    val gpf = g_perm.pf
+    val g_ldUpdate = !g_perm.a && TlbCmd.isRead(cmd) && !TlbCmd.isAmo(cmd)
+    val g_stUpdate = (!g_perm.a || !g_perm.d) && (TlbCmd.isWrite(cmd) || TlbCmd.isAmo(cmd))
+    val g_instrUpdate = !g_perm.a && TlbCmd.isExec(cmd)
+    val g_ldPermFail = !(g_perm.r || io.csr.priv.mxr && g_perm.x)
+    val g_stPermFail = !g_perm.w
+    val g_instrPermFail = !g_perm.x
+    val ldGpf = (g_ldPermFail || gpf) && (TlbCmd.isRead(cmd) && !TlbCmd.isAmo(cmd))
+    val stGpf = (g_stPermFail || gpf) && (TlbCmd.isWrite(cmd) || TlbCmd.isAmo(cmd))
+    val instrGpf = (g_instrPermFail || gpf) && TlbCmd.isExec(cmd)
+    val s2_valid = hasS2xlate
+
+    val fault_valid = s1_valid || s2_valid
+
+    resp(idx).bits.excp(nDups).pf.ld := (ldPf || ldUpdate) && s1_valid && !af
+    resp(idx).bits.excp(nDups).pf.st := (stPf || stUpdate) && s1_valid && !af
+    resp(idx).bits.excp(nDups).pf.instr := (instrPf || instrUpdate) && s1_valid && !af
+    // NOTE: pf need && with !af, page fault has higher priority than access fault
+    // but ptw may also have access fault, then af happens, the translation is wrong.
+    // In this case, pf has lower priority than af
+
+    resp(idx).bits.excp(nDups).gpf.ld := (ldGpf || g_ldUpdate) && s2_valid && !af
+    resp(idx).bits.excp(nDups).gpf.st := (stGpf || g_stUpdate) && s2_valid && !af
+    resp(idx).bits.excp(nDups).gpf.instr := (instrGpf || g_instrUpdate) && s2_valid && !af
+
+    resp(idx).bits.excp(nDups).af.ld    := (af || (spm_v && !spm.r)) && TlbCmd.isRead(cmd) && fault_valid
+    resp(idx).bits.excp(nDups).af.st    := (af || (spm_v && !spm.w)) && TlbCmd.isWrite(cmd) && fault_valid
+    resp(idx).bits.excp(nDups).af.instr := (af || (spm_v && !spm.x)) && TlbCmd.isExec(cmd) && fault_valid
+
+
+    resp(idx).bits.static_pm.valid := spm_v && fault_valid // ls/st unit should use this mmio, not the result from pmp
+    resp(idx).bits.static_pm.bits := !spm.c
   }
-  //val reqCycleCnt = Reg(UInt(16.W))
-  //reqCycleCnt := reqCycleCnt + BoolStopWatch(ptw.req(0).fire(), ptw.resp.fire || sfence.valid)
-  //XSPerfAccumulate("ptw_req_count", ptw.req.fire())
-  //XSPerfAccumulate("ptw_req_cycle", Mux(ptw.resp.fire(), reqCycleCnt, 0.U))
+
+  def handle_nonblock(idx: Int): Unit = {
+    io.requestor(idx).resp.valid := req_out_v(idx)
+    io.requestor(idx).req.ready := io.requestor(idx).resp.ready // should always be true
+    XSError(!io.requestor(idx).resp.ready, s"${q.name} port ${idx} is non-block, resp.ready must be true.B")
+
+    val req_s2xlate = Wire(UInt(2.W))
+    req_s2xlate(0) := virt || req_out(idx).hyperinst
+    req_s2xlate(1) := req_s2xlate(0) && vsatp.mode === 0.U && hgatp.mode === 8.U
+    val ptw_s2xlate = ptw.resp.bits.s2xlate
+    val onlyS2 = ptw_s2xlate === 11.U
+    val ptw_s1_hit = ptw.resp.bits.s1.hit(get_pn(req_out(idx).vaddr), Mux(ptw_s2xlate(0), io.csr.vsatp.asid, io.csr.satp.asid), io.csr.hgatp.asid, true, false, ptw_s2xlate(0))
+    val ptw_s2_hit = ptw.resp.bits.s2.hit(get_pn(req_out(idx).vaddr), io.csr.hgatp.asid)
+    val ptw_just_back = ptw.resp.fire && req_s2xlate === ptw_s2xlate&& Mux(onlyS2, ptw_s2_hit, ptw_s1_hit)
+    io.ptw.req(idx).valid :=  RegNext(req_out_v(idx) && missVec(idx) && !ptw_just_back, false.B) // TODO: remove the regnext, timing
+    when (RegEnable(io.requestor(idx).req_kill, RegNext(io.requestor(idx).req.fire))) {
+      io.ptw.req(idx).valid := false.B
+    }
+    io.ptw.req(idx).bits.vpn := RegNext(get_pn(req_out(idx).vaddr))
+    io.ptw.req(idx).bits.gvpn := RegNext(get_pn(req_out(idx).vaddr)) // for only stage two translation, longer than vpn
+    io.ptw.req(idx).bits.s2xlate := RegNext(req_s2xlate)
+    io.ptw.req(idx).bits.memidx := RegNext(req_out(idx).memidx)
+  }
+
+  def handle_block(idx: Int): Unit = {
+    // three valid: 1.if exist a entry; 2.if sent to ptw; 3.unset resp.valid
+    io.requestor(idx).req.ready := !req_out_v(idx) || io.requestor(idx).resp.fire()
+    // req_out_v for if there is a request, may long latency, fixme
+
+    // miss request entries
+    val miss_req_vpn = get_pn(req_out(idx).vaddr)
+    val miss_req_gvpn = get_pn(req_out(idx).vaddr)
+    val miss_req_memidx = req_out(idx).memidx
+    val miss_req_s2xlate = Wire(UInt(2.W))
+    miss_req_s2xlate(0) := virt || req_out(idx).hyperinst
+    miss_req_s2xlate(1) := miss_req_s2xlate(0) && vsatp.mode === 0.U && hgatp.mode === 8.U
+    val onlyS2 = miss_req_s2xlate === 11.U
+    val hit_s1 = io.ptw.resp.bits.s1.hit(miss_req_vpn, Mux(miss_req_s2xlate(0), io.csr.vsatp.asid, io.csr.satp.asid), io.csr.hgatp.asid, allType = true, false, miss_req_s2xlate(0))
+    val hit_s2 = io.ptw.resp.bits.s2.hit(miss_req_vpn, io.csr.hgatp.asid)
+    val hit = Mux(onlyS2, hit_s2, hit_s1) && io.ptw.resp.valid && miss_req_s2xlate === io.ptw.resp.bits.s2xlate
+
+    val new_coming = RegNext(req_in(idx).fire && !req_in(idx).bits.kill && !flush_pipe(idx), false.B)
+    val miss_wire = new_coming && missVec(idx)
+    val miss_v = ValidHoldBypass(miss_wire, resp(idx).fire(), flush_pipe(idx))
+    val miss_req_v = ValidHoldBypass(miss_wire || (miss_v && flush_mmu && !mmu_flush_pipe),
+      io.ptw.req(idx).fire() || resp(idx).fire(), flush_pipe(idx))
+
+    // when ptw resp, check if hit, reset miss_v, resp to lsu/ifu
+    resp(idx).valid := req_out_v(idx) && !(miss_v && portTranslateEnable(idx))
+    when (io.ptw.resp.fire() && hit && req_out_v(idx) && portTranslateEnable(idx)) {
+      val stage1 = io.ptw.resp.bits.s1
+      val stage2 = io.ptw.resp.bits.s2
+      val s2xlate = io.ptw.resp.bits.s2xlate
+      resp(idx).valid := true.B
+      resp(idx).bits.miss := false.B // for blocked tlb, this is useless
+      val s1_paddr = Cat(stage1.genPPN(get_pn(req_out(idx).vaddr)), get_off(req_out(idx).vaddr))
+      val s2_paddr = Cat(stage2.genPPNS2()
+      for (d <- 0 until nRespDups) {
+        resp(idx).bits.paddr(d) := Mux(s2xlate(0), s2_paddr, s1_paddr)
+        resp(idx).bits.gpaddr(d) := s1_paddr
+        perm_check(stage1.entry.perm.get(), req_out(idx).cmd, 0.U.asTypeOf(new TlbPMBundle), false.B, idx, d, stage2.entry.perm, req_out(idx).hlvx, s2xlate(0))
+      }
+      pmp_check(resp(idx).bits.paddr(0), req_out(idx).size, req_out(idx).cmd, idx)
+
+      // NOTE: the unfiltered req would be handled by Repeater
+    }
+    assert(RegNext(!resp(idx).valid || resp(idx).ready, true.B), "when tlb resp valid, ready should be true, must")
+    assert(RegNext(req_out_v(idx) || !(miss_v || miss_req_v), true.B), "when not req_out_v, should not set miss_v/miss_req_v")
+
+    val ptw_req = io.ptw.req(idx)
+    ptw_req.valid := miss_req_v
+    ptw_req.bits.vpn := miss_req_vpn
+    ptw_req.bits.gvpn := miss_req_gvpn
+    ptw_req.bits.s2xlate := miss_req_s2xlate
+    ptw_req.bits.memidx := miss_req_memidx
+
+    // NOTE: when flush pipe, tlb should abandon last req
+    // however, some outside modules like icache, dont care flushPipe, and still waiting for tlb resp
+    // just resp valid and raise page fault to go through. The pipe(ifu) will abandon it.
+    if (!q.outsideRecvFlush) {
+      when (req_out_v(idx) && flush_pipe(idx) && portTranslateEnable(idx)) {
+        resp(idx).valid := true.B
+        for (d <- 0 until nRespDups) {
+          resp(idx).bits.excp(d).pf.ld := true.B // sfence happened, pf for not to use this addr
+          resp(idx).bits.excp(d).pf.st := true.B
+          resp(idx).bits.excp(d).pf.instr := true.B
+        }
+      }
+    }
+  }
+
+  // when ptw resp, tlb at refill_idx maybe set to miss by force.
+  // Bypass ptw resp to check.
+  def ptw_resp_bypass(vpn: UInt, s2xlate: UInt) = {
+    val hasS2xlate = s2xlate(0) === 1.U
+    val onlyS2 = s2xlate(1) === 1.U && hasS2xlate
+    val s2xlate_hit = s2xlate === ptw.resp.bits.s2xlate
+    val normal_hit = ptw.resp.bits.s1.hit(vpn, Mux(hasS2xlate, io.csr.vsatp.asid, io.csr.satp.asid), io.csr.hgatp.asid, true, false, hasS2xlate)
+    val onlyS2_hit = ptw.resp.bits.s2.hit(vpn, io.csr.hgatp.asid)
+    val p_hit = RegNext(Mux(onlyS2, onlyS2_hit, normal_hit) && io.ptw.resp.fire && s2xlate_hit)
+    val ppn_s1 = ptw.resp.bits.s1.genPPN(vpn)
+    val ppn_s2 = ptw.resp.bits.s2.genPPNS2()
+    val p_ppn = RegEnable(Mux(hasS2xlate, ppn_s2, ppn_s1), io.ptw.resp.fire)
+    val p_perm = RegEnable(ptwresp_to_tlbperm(ptw.resp.bits.s1), io.ptw.resp.fire)
+    val p_gvpn = RegEnable(ptw.resp.bits.s2.entry.tag, io.ptw.resp.fire)
+    val p_g_perm = RegEnable(hptwresp_to_tlbperm(ptw.resp.bits.s2), io.ptw.resp.fire)
+    val p_s2xlate = RegEnable(ptw.resp.bits.s2xlate, io.ptw.resp.fire)
+    (p_hit, p_ppn, p_perm, p_gvpn, p_g_perm, p_s2xlate)
+  }
+
+  // assert
+  for(i <- 0 until Width) {
+    TimeOutAssert(req_out_v(i) && !resp(i).valid, timeOutThreshold, s"{q.name} port{i} long time no resp valid.")
+  }
+
+  // perf event
+  val result_ok = req_in.map(a => RegNext(a.fire()))
+  val perfEvents =
+    Seq(
+      ("access", PopCount((0 until Width).map{i => if (Block(i)) io.requestor(i).req.fire() else portTranslateEnable(i) && result_ok(i) })),
+      ("miss  ", PopCount((0 until Width).map{i => if (Block(i)) portTranslateEnable(i) && result_ok(i) && missVec(i) else ptw.req(i).fire() })),
+    )
+  generatePerfEvent()
+
+  // perf log
+  for (i <- 0 until Width) {
+    if (Block(i)) {
+      XSPerfAccumulate(s"access${i}",result_ok(i) && portTranslateEnable(i))
+      XSPerfAccumulate(s"miss${i}", result_ok(i) && missVec(i))
+    } else {
+      XSPerfAccumulate("first_access" + Integer.toString(i, 10), result_ok(i) && portTranslateEnable(i) && RegNext(req(i).bits.debug.isFirstIssue))
+      XSPerfAccumulate("access" + Integer.toString(i, 10), result_ok(i) && portTranslateEnable(i))
+      XSPerfAccumulate("first_miss" + Integer.toString(i, 10), result_ok(i) && portTranslateEnable(i) && missVec(i) && RegNext(req(i).bits.debug.isFirstIssue))
+      XSPerfAccumulate("miss" + Integer.toString(i, 10), result_ok(i) && portTranslateEnable(i) && missVec(i))
+    }
+  }
   XSPerfAccumulate("ptw_resp_count", ptw.resp.fire())
   XSPerfAccumulate("ptw_resp_pf_count", ptw.resp.fire() && ptw.resp.bits.pf)
-  XSPerfAccumulate("ptw_resp_sp_count", ptw.resp.fire() && !ptw.resp.bits.pf && (ptw.resp.bits.entry.level.get === 0.U || ptw.resp.bits.entry.level.get === 1.U))
 
   // Log
   for(i <- 0 until Width) {
@@ -303,9 +390,8 @@ class TLB(Width: Int, nRespDups: Int = 1, q: TLBParameters)(implicit p: Paramete
     XSDebug(resp(i).valid, p"resp(${i.U}): (${resp(i).valid} ${resp(i).ready}) ${resp(i).bits}\n")
   }
 
-  XSDebug(sfence_dup.head.valid, p"Sfence: ${sfence_dup.head}\n")
-  XSDebug(ParallelOR(valid)|| ptw.resp.valid, p"CSR: ${csr_dup.head}\n")
-  XSDebug(ParallelOR(valid) || ptw.resp.valid, p"vmEnable:${vmEnable_dup.head} hit:${Binary(VecInit(hitVec).asUInt)} miss:${Binary(VecInit(missVec).asUInt)}\n")
+  XSDebug(io.sfence.valid, p"Sfence: ${io.sfence}\n")
+  XSDebug(ParallelOR(req_out_v) || ptw.resp.valid, p"vmEnable:${vmEnable} hit:${Binary(VecInit(hitVec).asUInt)} miss:${Binary(VecInit(missVec).asUInt)}\n")
   for (i <- ptw.req.indices) {
     XSDebug(ptw.req(i).fire(), p"L2TLB req:${ptw.req(i).bits}\n")
   }
@@ -313,22 +399,44 @@ class TLB(Width: Int, nRespDups: Int = 1, q: TLBParameters)(implicit p: Paramete
 
   println(s"${q.name}: normal page: ${q.normalNWays} ${q.normalAssociative} ${q.normalReplacer.get} super page: ${q.superNWays} ${q.superAssociative} ${q.superReplacer.get}")
 
-//   // NOTE: just for simple tlb debug, comment it after tlb's debug
-  // assert(!io.ptw.resp.valid || io.ptw.resp.bits.entry.tag === io.ptw.resp.bits.entry.ppn, "Simple tlb debug requires vpn === ppn")
+  if (env.EnableDifftest) {
+    val l1tlbid = Wire(UInt(2.W))
+    if (q.name == "itlb") {
+      l1tlbid := 0.U
+    } else if (q.name == "ldtlb") {
+      l1tlbid := 1.U
+    } else if (q.name == "sttlb") {
+      l1tlbid := 2.U
+    } else {
+      l1tlbid := 3.U
+    }
 
-  val perfEvents = if(!q.shouldBlock) {
-    Seq(
-      ("access", PopCount((0 until Width).map(i => vmEnable_dup.head && validRegVec(i)))              ),
-      ("miss  ", PopCount((0 until Width).map(i => vmEnable_dup.head && validRegVec(i) && missVec(i)))),
-    )
-  } else {
-    Seq(
-      ("access", PopCount((0 until Width).map(i => io.requestor(i).req.fire()))),
-      ("miss  ", PopCount((0 until Width).map(i => ptw.req(i).fire()))         ),
-    )
+    for (i <- 0 until Width) {
+      val pf = io.requestor(i).resp.bits.excp(0).pf.instr || io.requestor(i).resp.bits.excp(0).pf.st || io.requestor(i).resp.bits.excp(0).pf.ld
+      val gpf = io.requestor(i).resp.bits.excp(0).gpf.instr || io.requestor(i).resp.bits.excp(0).gpf.st || io.requestor(i).resp.bits.excp(0).gpf.ld
+      val af = io.requestor(i).resp.bits.excp(0).af.instr || io.requestor(i).resp.bits.excp(0).af.st || io.requestor(i).resp.bits.excp(0).af.ld
+      val difftest = Module(new DifftestL1TLBEvent)
+      difftest.io.clock := clock
+      difftest.io.coreid := p(XSCoreParamsKey).HartId.asUInt
+      difftest.io.valid := l1tlbid =/= 3.U && RegNext(io.requestor(i).req.fire) && !RegNext(io.requestor(i).req_kill) && io.requestor(i).resp.fire && !io.requestor(i).resp.bits.miss && !pf && !af && !gpf && portTranslateEnable(i)
+      difftest.io.index := i.U
+      difftest.io.l1tlbid := l1tlbid
+      difftest.io.satp := io.csr.satp
+      difftest.io.vpn := RegNext(get_pn(req_in(i).bits.vaddr))
+      difftest.io.ppn := get_pn(io.requestor(i).resp.bits.paddr(0))
+      difftest.io.vsatp := io.csr.vsatp
+      difftest.io.hgatp := io.csr.hgatp
+      val s2xlate = Wire(UInt(2.W))
+      s2xlate(0) := virt || req_in(i).bits.hyperinst
+      s2xlate(1) := s2xlate(0) && io.csr.vsatp.mode === 0.U && io.csr.hgatp.mode === 8.U
+      difftest.io.s2xlate := s2xlate
+    }
   }
-  generatePerfEvent()
+
 }
+
+class TLBNonBlock(Width: Int, nRespDups: Int = 1, q: TLBParameters)(implicit p: Parameters) extends TLB(Width, nRespDups, Seq.fill(Width)(false), q)
+class TLBBLock(Width: Int, nRespDups: Int = 1, q: TLBParameters)(implicit p: Parameters) extends TLB(Width, nRespDups, Seq.fill(Width)(true), q)
 
 class TlbReplace(Width: Int, q: TLBParameters)(implicit p: Parameters) extends TlbModule {
   val io = IO(new TlbReplaceIO(Width, q))
@@ -351,60 +459,5 @@ class TlbReplace(Width: Int, q: TLBParameters)(implicit p: Parameters) extends T
     val re = ReplacementPolicy.fromString(q.superReplacer, q.superNSets, q.superNWays)
     re.access(io.superPage.access.map(_.sets), io.superPage.access.map(_.touch_ways))
     io.superPage.refillIdx := { if (q.superNWays == 1) 0.U else re.way(io.superPage.chosen_set) }
-  }
-}
-
-object TLB {
-  def apply
-  (
-    in: Seq[BlockTlbRequestIO],
-    sfence: SfenceBundle,
-    csr: TlbCsrBundle,
-    width: Int,
-    nRespDups: Int = 1,
-    shouldBlock: Boolean,
-    q: TLBParameters
-  )(implicit p: Parameters) = {
-    require(in.length == width)
-
-    val tlb = Module(new TLB(width, nRespDups, q))
-
-    tlb.io.sfence <> sfence
-    tlb.io.csr <> csr
-    tlb.suggestName(s"tlb_${q.name}")
-
-    if (!shouldBlock) { // dtlb
-      for (i <- 0 until width) {
-        tlb.io.requestor(i) <> in(i)
-        // tlb.io.requestor(i).req.valid := in(i).req.valid
-        // tlb.io.requestor(i).req.bits := in(i).req.bits
-        // in(i).req.ready := tlb.io.requestor(i).req.ready
-
-        // in(i).resp.valid := tlb.io.requestor(i).resp.valid
-        // in(i).resp.bits := tlb.io.requestor(i).resp.bits
-        // tlb.io.requestor(i).resp.ready := in(i).resp.ready
-      }
-    } else { // itlb
-      //require(width == 1)
-      (0 until width).map{ i =>
-        tlb.io.requestor(i).req.valid := in(i).req.valid
-        tlb.io.requestor(i).req.bits := in(i).req.bits
-        tlb.io.requestor(i).req_kill := false.B
-        in(i).req.ready := !tlb.io.requestor(i).resp.bits.miss && in(i).resp.ready && tlb.io.requestor(i).req.ready
-
-        require(q.missSameCycle || q.sameCycle)
-        // NOTE: the resp.valid seems to be useless, it must be true when need
-        //       But don't know what happens when true but not need, so keep it correct value, not just true.B
-        if (q.missSameCycle && !q.sameCycle) {
-          in(i).resp.valid := tlb.io.requestor(i).resp.valid && !RegNext(tlb.io.requestor(i).resp.bits.miss)
-        } else {
-          in(i).resp.valid := tlb.io.requestor(i).resp.valid && !tlb.io.requestor(i).resp.bits.miss
-        }
-        in(i).resp.bits := tlb.io.requestor(i).resp.bits
-        tlb.io.requestor(i).resp.ready := in(i).resp.ready
-      }
-      tlb.io.ptw_replenish <> DontCare // itlb only use reg, so no static pmp/pma
-    }
-    tlb.io.ptw
   }
 }
