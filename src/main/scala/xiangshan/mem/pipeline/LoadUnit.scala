@@ -377,15 +377,23 @@ class LoadUnit_S1(implicit p: Parameters) extends XSModule {
     val needLdVioCheckRedo = Output(Bool())
   })
 
-  val s1_uop = io.in.bits.uop
-  val s1_paddr_dup_lsu = io.dtlbResp.bits.paddr(0)
-  val s1_gpaddr_dup_lsu = io.dtlbResp.bits.gpaddr(0)
-  val s1_paddr_dup_dcache = io.dtlbResp.bits.paddr(1)
-  // af & pf exception were modified below.
-  val s1_exception = ExceptionNO.selectByFu(io.out.bits.uop.cf.exceptionVec, lduCfg).asUInt.orR
-  val s1_tlb_miss = io.dtlbResp.bits.miss
-  val s1_mask = io.in.bits.mask
-  val s1_bank_conflict = io.dcacheBankConflict
+  val s1_fast_rep_dly_err = RegNext(io.fast_rep_in.bits.delayedLoadError)
+  val s1_fast_rep_kill    = s1_fast_rep_dly_err && s1_in.isFastReplay
+  val s1_l2l_fwd_dly_err  = RegNext(io.l2l_fwd_in.dly_ld_err)
+  val s1_l2l_fwd_kill     = s1_l2l_fwd_dly_err && s1_in.isFastPath
+  val s1_late_kill        = s1_fast_rep_kill || s1_l2l_fwd_kill
+  val s1_vaddr_hi         = Wire(UInt())
+  val s1_vaddr_lo         = Wire(UInt())
+  val s1_vaddr            = Wire(UInt())
+  val s1_paddr_dup_lsu    = Wire(UInt())
+  val s1_gpaddr_dup_lsu   = Wire(UInt())
+  val s1_paddr_dup_dcache = Wire(UInt())
+  val s1_exception        = ExceptionNO.selectByFu(s1_out.uop.cf.exceptionVec, lduCfg).asUInt.orR   // af & pf exception were modified below.
+  val s1_tlb_miss         = io.tlb.resp.bits.miss
+  val s1_prf              = s1_in.isPrefetch
+  val s1_hw_prf           = s1_in.isHWPrefetch
+  val s1_sw_prf           = s1_prf && !s1_hw_prf
+  val s1_tlb_memidx       = io.tlb.resp.bits.memidx
 
   io.out.bits := io.in.bits // forwardXX field will be updated in s1
 
