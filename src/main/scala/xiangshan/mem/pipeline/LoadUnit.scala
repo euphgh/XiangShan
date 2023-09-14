@@ -396,6 +396,12 @@ class LoadUnit_S1(implicit p: Parameters) extends XSModule {
   val s1_tlb_memidx       = io.tlb.resp.bits.memidx
 
   io.out.bits := io.in.bits // forwardXX field will be updated in s1
+  s1_vaddr_hi         := s1_in.vaddr(VAddrBits - 1, 6)
+  s1_vaddr_lo         := s1_in.vaddr(5, 0)
+  s1_vaddr            := Cat(s1_vaddr_hi, s1_vaddr_lo)
+  s1_paddr_dup_lsu    := io.tlb.resp.bits.paddr(0)
+  s1_paddr_dup_dcache := io.tlb.resp.bits.paddr(1)
+  s1_gpaddr_dup_lsu   := io.tlb.resp.bits.gpaddr(0)
 
   io.dtlbResp.ready := true.B
 
