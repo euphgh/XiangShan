@@ -47,18 +47,21 @@ class StoreUnit_S0(implicit p: Parameters) extends XSModule {
   val saddr = Cat(saddr_hi, saddr_lo(11,0))
   val isHsv = WireInit(LSUOpType.isHsv(io.in.bits.uop.ctrl.fuOpType))
 
-  io.dtlbReq.bits.vaddr := saddr
-  io.dtlbReq.valid := io.in.valid
-  io.dtlbReq.bits.cmd := TlbCmd.write
-  io.dtlbReq.bits.hyperinst := isHsv
-  io.dtlbReq.bits.hlvx := false.B
-  io.dtlbReq.bits.size := LSUOpType.size(io.in.bits.uop.ctrl.fuOpType)
-  io.dtlbReq.bits.robIdx := io.in.bits.uop.robIdx
-  io.dtlbReq.bits.debug.pc := io.in.bits.uop.cf.pc
-  io.dtlbReq.bits.debug.isFirstIssue := io.isFirstIssue
-
-  io.out.bits := DontCare
-  io.out.bits.vaddr := saddr
+  io.tlb.req.valid             := s0_valid
+  io.tlb.req.bits.vaddr        := s0_saddr
+  io.tlb.req.bits.cmd          := TlbCmd.write
+  io.tlb.req.bits.size         := LSUOpType.size(s0_in.uop.ctrl.fuOpType)
+  io.tlb.req.bits.kill         := DontCare
+  io.tlb.req.bits.memidx.is_ld := false.B
+  io.tlb.req.bits.memidx.is_st := true.B
+  io.tlb.req.bits.memidx.idx   := s0_in.uop.sqIdx.value
+  io.tlb.req.bits.debug.robIdx := s0_in.uop.robIdx
+  io.tlb.req.bits.no_translate := false.B
+  io.tlb.req.bits.debug.pc     := s0_in.uop.cf.pc
+  io.tlb.req.bits.debug.isFirstIssue := s0_isFirstIssue
+  io.tlb.req_kill              := false.B
+  io.tlb.req.bits.hyperinst    := LSUOpType.isHsv(s0_in.uop.ctrl.fuOpType)
+  io.tlb.req.bits.hlvx         := false.B
 
   // Now data use its own io
   // io.out.bits.data := genWdata(io.in.bits.src(1), io.in.bits.uop.ctrl.fuOpType(1,0))

@@ -118,6 +118,7 @@ class StoreQueue(implicit p: Parameters) extends XSModule
     numForward = StorePipelineWidth
   ))
   vaddrModule.io := DontCare
+  gpaddrModule.io := DontCare
   val dataBuffer = Module(new DatamoduleResultBuffer(new DataBufferEntry))
   val debug_paddr = Reg(Vec(StoreQueueSize, UInt((PAddrBits).W)))
   val debug_vaddr = Reg(Vec(StoreQueueSize, UInt((VAddrBits).W)))
@@ -279,7 +280,7 @@ class StoreQueue(implicit p: Parameters) extends XSModule
 
       gpaddrModule.io.waddr(i) := stWbIndex
       gpaddrModule.io.wdata(i) := io.storeAddrIn(i).bits.gpaddr
-      vaddrModule.io.wmask(i)  := io.storeAddrIn(i).bits.mask
+      gpaddrModule.io.wmask(i)  := io.storeAddrIn(i).bits.mask
       gpaddrModule.io.wlineflag(i) := io.storeAddrIn(i).bits.wlineflag
       gpaddrModule.io.wen(i) := true.B
 
@@ -391,6 +392,9 @@ class StoreQueue(implicit p: Parameters) extends XSModule
 
     vaddrModule.io.forwardMdata(i) := io.forward(i).vaddr
     paddrModule.io.forwardMdata(i) := io.forward(i).paddr
+    paddrModule.io.forwardDataMask(i) := io.forward(i).mask
+    gpaddrModule.io.forwardMdata(i) := io.forward(i).gpaddr
+    gpaddrModule.io.forwardDataMask(i) := io.forward(i).mask
 
     // vaddr cam result does not equal to paddr cam result
     // replay needed

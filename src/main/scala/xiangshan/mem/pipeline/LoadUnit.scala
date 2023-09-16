@@ -189,22 +189,61 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
   io.dtlbReq.bits.debug.isFirstIssue := s0_isFirstIssue
 
   // query DCache
-  io.dcacheReq.valid := s0_valid
-  when (isPrefetchRead) {
-    io.dcacheReq.bits.cmd  := MemoryOpConstants.M_PFR
-  }.elsewhen (isPrefetchWrite) {
-    io.dcacheReq.bits.cmd  := MemoryOpConstants.M_PFW
-  }.otherwise {
-    io.dcacheReq.bits.cmd  := MemoryOpConstants.M_XRD
+  io.dcache.req.valid             := s0_valid
+  io.dcache.req.bits.cmd          := Mux(s0_prf_rd,
+                                      MemoryOpConstants.M_PFR,
+                                      Mux(s0_prf_wr, MemoryOpConstants.M_PFW, MemoryOpConstants.M_XRD)
+                                    )
+  io.dcache.req.bits.vaddr        := s0_vaddr
+  io.dcache.req.bits.mask         := s0_mask
+  io.dcache.req.bits.data         := DontCare
+  io.dcache.req.bits.isFirstIssue := s0_isFirstIssue
+  io.dcache.req.bits.instrtype    := Mux(s0_prf, DCACHE_PREFETCH_SOURCE.U, LOAD_SOURCE.U)
+  io.dcache.req.bits.debug_robIdx := s0_uop.robIdx.value
+  io.dcache.req.bits.replayCarry  := s0_rep_carry
+  io.dcache.req.bits.id           := DontCare // TODO: update cache meta
+
+  // load flow priority mux
+  def fromNullSource() = {
+    s0_vaddr         := 0.U
+    s0_mask          := 0.U
+    s0_uop           := 0.U.asTypeOf(new MicroOp)
+    s0_try_l2l       := false.B
+    s0_has_rob_entry := false.B
+    s0_rsIdx         := 0.U
+    s0_rep_carry     := 0.U.asTypeOf(s0_rep_carry.cloneType)
+    s0_mshrid        := 0.U
+    s0_isFirstIssue  := false.B
+    s0_fast_rep      := false.B
+    s0_ld_rep        := false.B
+    s0_l2l_fwd       := false.B
+    s0_prf           := false.B
+    s0_prf_rd        := false.B
+    s0_prf_wr        := false.B
+    s0_sched_idx     := 0.U
+    s0_hlv           := false.B
+    s0_hlvx          := false.B
   }
-  io.dcacheReq.bits.vaddr := s0_vaddr
-  io.dcacheReq.bits.mask := s0_mask
-  io.dcacheReq.bits.data := DontCare
-  io.dcacheReq.bits.isFirstIssue := s0_isFirstIssue
-  when(isPrefetch) {
-    io.dcacheReq.bits.instrtype := DCACHE_PREFETCH_SOURCE.U
-  }.otherwise {
-    io.dcacheReq.bits.instrtype := LOAD_SOURCE.U
+
+  def fromFastReplaySource(src: LqWriteBundle) = {
+    s0_vaddr         := src.vaddr
+    s0_mask          := src.mask
+    s0_uop           := src.uop
+    s0_try_l2l       := false.B
+    s0_has_rob_entry := src.hasROBEntry
+    s0_rep_carry     := src.rep_info.rep_carry
+    s0_mshrid        := src.rep_info.mshr_id
+    s0_rsIdx         := src.rsIdx
+    s0_isFirstIssue  := false.B
+    s0_fast_rep      := true.B
+    s0_ld_rep        := src.isLoadReplay
+    s0_l2l_fwd       := false.B
+    s0_prf           := LSUOpType.isPrefetch(src.uop.ctrl.fuOpType)
+    s0_prf_rd        := src.uop.ctrl.fuOpType === LSUOpType.prefetch_r
+    s0_prf_wr        := src.uop.ctrl.fuOpType === LSUOpType.prefetch_w
+    s0_sched_idx     := src.schedIndex
+    s0_hlv           := LSUOpType.isHlv(src.uop.ctrl.fuOpType)
+    s0_hlvx          := LSUOpType.isHlvx(src.uop.ctrl.fuOpType)
   }
   io.dcacheReq.bits.debug_robIdx := s0_uop.robIdx.value
   io.dcacheReq.bits.replayCarry := s0_replayCarry
@@ -213,6 +252,116 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
   io.dcacheReq.bits.id := DontCare
 
   // assign default value
+  def fromNormalReplaySource(src: LsPipelineBundle) = {
+    s0_vaddr         := src.vaddr
+    s0_mask          := genVWmask(src.vaddr, src.uop.ctrl.fuOpType(1, 0))
+    s0_uop           := src.uop
+    s0_try_l2l       := false.B
+    s0_has_rob_entry := true.B
+    s0_rsIdx         := src.rsIdx
+    s0_rep_carry     := src.replayCarry
+    s0_mshrid        := src.mshrid
+    s0_isFirstIssue  := false.B
+    s0_fast_rep      := false.B
+    s0_ld_rep        := true.B
+    s0_l2l_fwd       := false.B
+    s0_prf           := LSUOpType.isPrefetch(src.uop.ctrl.fuOpType)
+    s0_prf_rd        := src.uop.ctrl.fuOpType === LSUOpType.prefetch_r
+    s0_prf_wr        := src.uop.ctrl.fuOpType === LSUOpType.prefetch_w
+    s0_sched_idx     := src.schedIndex
+    s0_hlv           := LSUOpType.isHlv(src.uop.ctrl.fuOpType)
+    s0_hlvx          := LSUOpType.isHlvx(src.uop.ctrl.fuOpType)
+  }
+
+  def fromPrefetchSource(src: L1PrefetchReq) = {
+    s0_vaddr         := src.getVaddr()
+    s0_mask          := 0.U
+    s0_uop           := DontCare
+    s0_try_l2l       := false.B
+    s0_has_rob_entry := false.B
+    s0_rsIdx         := 0.U
+    s0_rep_carry     := 0.U.asTypeOf(s0_rep_carry.cloneType)
+    s0_mshrid        := 0.U
+    s0_isFirstIssue  := false.B
+    s0_fast_rep      := false.B
+    s0_ld_rep        := false.B
+    s0_l2l_fwd       := false.B
+    s0_prf           := true.B
+    s0_prf_rd        := !src.is_store
+    s0_prf_wr        := src.is_store
+    s0_sched_idx     := 0.U
+    s0_hlv           := false.B
+    s0_hlvx          := false.B
+  }
+
+  def fromIntIssueSource(src: ExuInput) = {
+    s0_vaddr         := src.src(0) + SignExt(src.uop.ctrl.imm(11, 0), VAddrBits)
+    s0_mask          := genVWmask(s0_vaddr, src.uop.ctrl.fuOpType(1,0))
+    s0_uop           := src.uop
+    s0_try_l2l       := false.B
+    s0_has_rob_entry := true.B
+    s0_rsIdx         := io.rsIdx
+    s0_rep_carry     := 0.U.asTypeOf(s0_rep_carry.cloneType)
+    s0_mshrid        := 0.U
+    s0_isFirstIssue  := true.B
+    s0_fast_rep      := false.B
+    s0_ld_rep        := false.B
+    s0_l2l_fwd       := false.B
+    s0_prf           := LSUOpType.isPrefetch(src.uop.ctrl.fuOpType)
+    s0_prf_rd        := src.uop.ctrl.fuOpType === LSUOpType.prefetch_r
+    s0_prf_wr        := src.uop.ctrl.fuOpType === LSUOpType.prefetch_w
+    s0_sched_idx     := 0.U
+    s0_hlv           := LSUOpType.isHlv(src.uop.ctrl.fuOpType)
+    s0_hlvx          := LSUOpType.isHlvx(src.uop.ctrl.fuOpType)
+  }
+
+  def fromVecIssueSource() = {
+    s0_vaddr         := 0.U
+    s0_mask          := 0.U
+    s0_uop           := 0.U.asTypeOf(new MicroOp)
+    s0_try_l2l       := false.B
+    s0_has_rob_entry := false.B
+    s0_rsIdx         := 0.U
+    s0_rep_carry     := 0.U.asTypeOf(s0_rep_carry.cloneType)
+    s0_mshrid        := 0.U
+    s0_isFirstIssue  := false.B
+    s0_fast_rep      := false.B
+    s0_ld_rep        := false.B
+    s0_l2l_fwd       := false.B
+    s0_prf           := false.B
+    s0_prf_rd        := false.B
+    s0_prf_wr        := false.B
+    s0_sched_idx     := 0.U
+    s0_hlv           := false.B
+    s0_hlvx          := false.B
+  }
+
+  def fromLoadToLoadSource(src: LoadToLoadIO) = {
+    s0_vaddr              := Cat(src.data(XLEN-1, 6), s0_ptr_chasing_vaddr(5,0))
+    s0_mask               := genVWmask(s0_vaddr, io.ld_fast_fuOpType(1, 0))
+    // When there's no valid instruction from RS and LSQ, we try the load-to-load forwarding.
+    // Assume the pointer chasing is always ld.
+    s0_uop.ctrl.fuOpType  := io.ld_fast_fuOpType
+    s0_try_l2l            := true.B
+    // we dont care s0_isFirstIssue and s0_rsIdx and s0_sqIdx in S0 when trying pointchasing
+    // because these signals will be updated in S1
+    s0_has_rob_entry      := false.B
+    s0_rsIdx              := 0.U
+    s0_mshrid             := 0.U
+    s0_rep_carry          := 0.U.asTypeOf(s0_rep_carry.cloneType)
+    s0_isFirstIssue       := true.B
+    s0_fast_rep           := false.B
+    s0_ld_rep             := false.B
+    s0_l2l_fwd            := true.B
+    s0_prf                := false.B
+    s0_prf_rd             := false.B
+    s0_prf_wr             := false.B
+    s0_sched_idx          := 0.U
+    s0_hlv                := LSUOpType.isHlv(s0_uop.ctrl.fuOpType)
+    s0_hlvx               := LSUOpType.isHlvx(s0_uop.ctrl.fuOpType)
+  }
+
+  // set default
   s0_uop := DontCare
   // load flow priority mux
   when (lfsrc_loadFastReplay_select) {
@@ -413,11 +562,11 @@ class LoadUnit_S1(implicit p: Parameters) extends XSModule {
   io.sbuffer.valid := io.in.valid && !(s1_exception || s1_tlb_miss || io.s1_kill)
   io.sbuffer.vaddr := io.in.bits.vaddr
   io.sbuffer.paddr := s1_paddr_dup_lsu
-  io.sbuffer.gpaddr := s1_gpaddr_dup_lsu
-  io.sbuffer.uop := s1_uop
-  io.sbuffer.sqIdx := s1_uop.sqIdx
-  io.sbuffer.mask := s1_mask
-  io.sbuffer.pc := s1_uop.cf.pc // FIXME: remove it
+  io.sbuffer.gpaddr:= s1_gpaddr_dup_lsu
+  io.sbuffer.uop   := s1_in.uop
+  io.sbuffer.sqIdx := s1_in.uop.sqIdx
+  io.sbuffer.mask  := s1_in.mask
+  io.sbuffer.pc    := s1_in.uop.cf.pc // FIXME: remove it
 
   io.lsq.valid := io.in.valid && !(s1_exception || s1_tlb_miss || io.s1_kill)
   io.lsq.vaddr := io.in.bits.vaddr
