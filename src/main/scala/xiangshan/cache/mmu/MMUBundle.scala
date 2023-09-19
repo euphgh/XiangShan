@@ -95,7 +95,7 @@ class TlbPermBundle(implicit p: Parameters) extends TlbBundle {
     this
   }
 
-  def applyS2(item: HptwResp, pm: PMPConfig) = {
+  def applyS2(item: HptwResp) = {
     val ptePerm = item.entry.perm.get.asTypeOf(new PtePermBundle().cloneType)
     this.pf := item.gpf
     this.af := item.gaf
@@ -107,9 +107,9 @@ class TlbPermBundle(implicit p: Parameters) extends TlbBundle {
     this.w := ptePerm.w
     this.r := ptePerm.r
 
-    this.pm.assign_ap(pm)
     this
   }
+
   override def toPrintable: Printable = {
     p"pf:${pf} af:${af} d:${d} a:${a} g:${g} u:${u} x:${x} w:${w} r:${r} " +
     p"pm:${pm}"
@@ -264,9 +264,9 @@ class TlbEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parameters) 
       else item.s2.entry.ppn
     }
     this.ppn := Mux(item.s2xlate === noS2xlate || item.s2xlate === onlyStage1, s1ppn, s2ppn)
-    this.perm.apply(item.s1, pm)
+    this.perm.apply(item.s1)
     this.vmid := item.s1.entry.vmid.getOrElse(0.U)
-    this.g_perm.applyS2(item.s2, pm)
+    this.g_perm.applyS2(item.s2)
     this.s2xlate := item.s2xlate
     this
   }
@@ -409,7 +409,7 @@ class TlbSectorEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parame
                                                         2.U -> 0.U ))
                           else if (pageSuper) ~inner_level(0)
                           else 0.U })
-    this.perm.apply(item.s1, pm)
+    this.perm.apply(item.s1)
 
     this.pteidx := Mux(item.s2xlate === noS2xlate || item.s2xlate === onlyStage1, item.s1.pteidx, VecInit(UIntToOH(item.s2.entry.tag(sectortlbwidth - 1, 0)).asBools))
     this.valididx := Mux(item.s2xlate === noS2xlate || item.s2xlate === onlyStage1, item.s1.valididx, item.s1.pteidx)
@@ -429,7 +429,7 @@ class TlbSectorEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parame
     this.ppn := Mux(item.s2xlate === noS2xlate || item.s2xlate === onlyStage1, s1ppn, s2ppn)
     this.ppn_low := Mux(item.s2xlate === noS2xlate || item.s2xlate === onlyStage1, s1ppn_low, s2ppn_low)
     this.vmid := item.s1.entry.vmid.getOrElse(0.U)
-    this.g_perm.applyS2(item.s2, pm(0))
+    this.g_perm.applyS2(item.s2)
     this.s2xlate := item.s2xlate
     this
   }

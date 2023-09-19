@@ -160,7 +160,6 @@ trait HasTlbConst extends HasXSParameter {
     tp.x := ptePerm.x
     tp.w := ptePerm.w
     tp.r := ptePerm.r
-    tp.pm := DontCare
     tp
   }
 

@@ -1436,52 +1436,52 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
 
   // Always instantiate basic difftest modules.
   if (env.AlwaysBasicDiff || env.EnableDifftest) {
-    val difftest = Module(new DifftestCSRState)
-    difftest.io.clock := clock
-    difftest.io.coreid := csrio.hartId
-    difftest.io.priviledgeMode := priviledgeMode
-    difftest.io.mstatus := mstatus
-    difftest.io.sstatus := mstatus & sstatusRmask
-    difftest.io.mepc := mepc
-    difftest.io.sepc := sepc
-    difftest.io.mtval:= mtval
-    difftest.io.stval:= stval
-    difftest.io.mtvec := mtvec
-    difftest.io.stvec := stvec
-    difftest.io.mcause := mcause
-    difftest.io.scause := scause
-    difftest.io.satp := satp
-    difftest.io.mip := mipReg
-    difftest.io.mie := mie
-    difftest.io.mscratch := mscratch
-    difftest.io.sscratch := sscratch
-    difftest.io.mideleg := mideleg
-    difftest.io.medeleg := medeleg
+    val difftest = DifftestModule(new DiffCSRState)
+    difftest.clock := clock
+    difftest.coreid := csrio.hartId
+    difftest.priviledgeMode := priviledgeMode
+    difftest.mstatus := mstatus
+    difftest.sstatus := mstatus & sstatusRmask
+    difftest.mepc := mepc
+    difftest.sepc := sepc
+    difftest.mtval:= mtval
+    difftest.stval:= stval
+    difftest.mtvec := mtvec
+    difftest.stvec := stvec
+    difftest.mcause := mcause
+    difftest.scause := scause
+    difftest.satp := satp
+    difftest.mip := mipReg
+    difftest.mie := mie
+    difftest.mscratch := mscratch
+    difftest.sscratch := sscratch
+    difftest.mideleg := mideleg
+    difftest.medeleg := medeleg
   }
 
   if (env.AlwaysBasicDiff || env.EnableDifftest) {
-    val difftest = Module(new DifftestHCSRState)
-    difftest.io.clock := clock
-    difftest.io.coreid := csrio.hartId
-    difftest.io.virtMode := virtMode
-    difftest.io.mtval2 := mtval2
-    difftest.io.mtinst := mtinst
-    difftest.io.hstatus := hstatus
-    difftest.io.hideleg := hideleg
-    difftest.io.hedeleg := hedeleg
-    difftest.io.hcounteren := hcounteren
-    difftest.io.htval := htval
-    difftest.io.htinst := htinst
-    difftest.io.hgatp := hgatp
-    difftest.io.vsstatus := vsstatus
-    difftest.io.vstvec := vstvec
-    difftest.io.vsepc := vsepc
-    difftest.io.vscause := vscause
-    difftest.io.vstval := vstval
-    difftest.io.vsatp := vsatp
-    difftest.io.vsscratch := vsscratch
+    val difftest = DifftestModule(new DiffHCSRState)
+    difftest.clock := clock
+    difftest.coreid := csrio.hartId
+    difftest.virtMode := virtMode
+    difftest.mtval2 := mtval2
+    difftest.mtinst := mtinst
+    difftest.hstatus := hstatus
+    difftest.hideleg := hideleg
+    difftest.hedeleg := hedeleg
+    difftest.hcounteren := hcounteren
+    difftest.htval := htval
+    difftest.htinst := htinst
+    difftest.hgatp := hgatp
+    difftest.vsstatus := vsstatus
+    difftest.vstvec := vstvec
+    difftest.vsepc := vsepc
+    difftest.vscause := vscause
+    difftest.vstval := vstval
+    difftest.vsatp := vsatp
+    difftest.vsscratch := vsscratch
   }
-  
+ 
   if(env.AlwaysBasicDiff || env.EnableDifftest) {
     val difftest = Module(new DifftestDebugMode)
     difftest.io.clock := clock

@@ -450,17 +450,19 @@ class TLB(Width: Int, nRespDups: Int = 1, Block: Seq[Boolean], q: TLBParameters)
       val pf = io.requestor(i).resp.bits.excp(0).pf.instr || io.requestor(i).resp.bits.excp(0).pf.st || io.requestor(i).resp.bits.excp(0).pf.ld
       val gpf = io.requestor(i).resp.bits.excp(0).gpf.instr || io.requestor(i).resp.bits.excp(0).gpf.st || io.requestor(i).resp.bits.excp(0).gpf.ld
       val af = io.requestor(i).resp.bits.excp(0).af.instr || io.requestor(i).resp.bits.excp(0).af.st || io.requestor(i).resp.bits.excp(0).af.ld
-      val difftest = Module(new DifftestL1TLBEvent)
-      difftest.io.clock := clock
-      difftest.io.coreid := p(XSCoreParamsKey).HartId.asUInt
-      difftest.io.valid := l1tlbid =/= 3.U && RegNext(io.requestor(i).req.fire) && !RegNext(io.requestor(i).req_kill) && io.requestor(i).resp.fire && !io.requestor(i).resp.bits.miss && !pf && !af && !gpf && portTranslateEnable(i)
-      difftest.io.index := i.U
-      difftest.io.l1tlbid := l1tlbid
-      difftest.io.vpn := RegNext(get_pn(req_in(i).bits.vaddr))
-      difftest.io.ppn := get_pn(io.requestor(i).resp.bits.paddr(0))
-      difftest.io.satp := Cat(io.csr.satp.mode, io.csr.satp.asid, io.csr.satp.ppn)
-      difftest.io.vsatp := Cat(io.csr.vsatp.mode, io.csr.vsatp.asid, io.csr.vsatp.ppn)
-      difftest.io.hgatp := Cat(io.csr.hgatp.mode, io.csr.hgatp.asid, io.csr.hgatp.ppn)
+      val difftest = DifftestModule(new DiffL1TLBEvent)
+      difftest.clock := clock
+      difftest.coreid := p(XSCoreParamsKey).HartId.asUInt
+      difftest.valid := RegNext(io.requestor(i).req.fire) && !RegNext(io.requestor(i).req_kill) && io.requestor(i).resp.fire && !io.requestor(i).resp.bits.miss && !pf && !af && !gpf && portTranslateEnable(i)
+      if (!Seq("itlb", "ldtlb", "sttlb").contains(q.name)) {
+        difftest.valid := false.B
+      }
+      difftest.index := TLBDiffId(p(XSCoreParamsKey).HartId).U
+      difftest.vpn := RegNext(get_pn(req_in(i).bits.vaddr))
+      difftest.ppn := get_pn(io.requestor(i).resp.bits.paddr(0))
+      difftest.satp := Cat(io.csr.satp.mode, io.csr.satp.asid, io.csr.satp.ppn)
+      difftest.vsatp := Cat(io.csr.vsatp.mode, io.csr.vsatp.asid, io.csr.vsatp.ppn)
+      difftest.hgatp := Cat(io.csr.hgatp.mode, io.csr.hgatp.asid, io.csr.hgatp.ppn)
       val s2xlate = Wire(UInt(2.W))
       s2xlate := MuxCase(noS2xlate, Seq(
         (!(virt || req_in(i).bits.hyperinst)) -> noS2xlate,
@@ -468,7 +470,7 @@ class TLB(Width: Int, nRespDups: Int = 1, Block: Seq[Boolean], q: TLBParameters)
         (vsatp.mode === 0.U) -> onlyStage2,
         (hgatp.mode === 0.U) -> onlyStage1
       ))
-      difftest.io.s2xlate := s2xlate
+      difftest.s2xlate := s2xlate
     }
   }
 
