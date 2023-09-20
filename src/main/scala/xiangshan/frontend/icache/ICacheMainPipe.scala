@@ -320,6 +320,24 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   s1_fire  := s1_valid && tlbRespAllValid && s2_ready && !tlb_miss_flush
 
   fromITLB.map(_.ready := true.B)
+  // chose tlb req between s0 and s1
+  for (i <- 0 until PortNumber) {
+    toITLB(i).valid         := Mux(s1_need_itlb(i), toITLB_s1_valid(i), toITLB_s0_valid(i))
+    toITLB(i).bits.size     := Mux(s1_need_itlb(i), toITLB_s1_size(i), toITLB_s0_size(i))
+    toITLB(i).bits.vaddr    := Mux(s1_need_itlb(i), toITLB_s1_vaddr(i), toITLB_s0_vaddr(i))
+    toITLB(i).bits.debug.pc := Mux(s1_need_itlb(i), toITLB_s1_debug_pc(i), toITLB_s0_debug_pc(i))
+  }
+  toITLB.map{port =>
+    port.bits.cmd                 := TlbCmd.exec
+    port.bits.memidx              := DontCare
+    port.bits.debug.robIdx        := DontCare
+    port.bits.no_translate        := false.B
+    port.bits.debug.isFirstIssue  := DontCare
+    port.bits.kill                := DontCare
+    port.bits.hlvx                := DontCare
+    port.bits.hyperinst           := DontCare
+  }
+  io.itlb.foreach(_.req_kill := false.B)
 
   /** tlb response latch for pipeline stop */
   val s1_tlb_all_resp_wire       =  RegNext(s0_fire)
