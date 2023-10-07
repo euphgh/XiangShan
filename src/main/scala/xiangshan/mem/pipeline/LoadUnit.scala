@@ -583,9 +583,16 @@ class LoadUnit_S1(implicit p: Parameters) extends XSModule {
   io.loadViolationQueryReq.bits.paddr := s1_paddr_dup_lsu
   io.loadViolationQueryReq.bits.uop := s1_uop
 
-  // Generate forwardMaskFast to wake up insts earlier
-  val forwardMaskFast = io.lsq.forwardMaskFast.asUInt | io.sbuffer.forwardMaskFast.asUInt
-  io.fullForwardFast := ((~forwardMaskFast).asUInt & s1_mask) === 0.U
+  s1_out                   := s1_in
+  s1_out.vaddr             := s1_vaddr
+  s1_out.paddr             := s1_paddr_dup_lsu
+  s1_out.gpaddr            := s1_gpaddr_dup_lsu
+  s1_out.tlbMiss           := s1_tlb_miss
+  s1_out.ptwBack           := io.tlb.resp.bits.ptwBack
+  s1_out.rsIdx             := s1_in.rsIdx
+  s1_out.rep_info.debug    := s1_in.uop.debugInfo
+  s1_out.rep_info.nuke     := s1_nuke && !s1_sw_prf
+  s1_out.lateKill          := s1_late_kill
 
   // Generate feedback signal caused by:
   // * dcache bank conflict
