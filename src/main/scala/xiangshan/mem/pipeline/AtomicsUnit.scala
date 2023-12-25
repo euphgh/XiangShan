@@ -155,7 +155,6 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
       exceptionVec(loadAccessFault)     := io.dtlb.resp.bits.excp(0).af.ld
       exceptionVec(storeGuestPageFault) := io.dtlb.resp.bits.excp(0).gpf.st
       exceptionVec(loadGuestPageFault) := io.dtlb.resp.bits.excp(0).gpf.ld
-      static_pm := io.dtlb.resp.bits.static_pm
 
       when (!io.dtlb.resp.bits.miss) {
         when (!addrAligned) {
@@ -389,24 +388,22 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
   io.out.bits.uop.cf.trigger.backendCanFire := triggerCanFireVec
 
   if (env.EnableDifftest) {
-    val difftest = Module(new DifftestAtomicEvent)
-    difftest.io.clock      := clock
-    difftest.io.coreid     := io.hartId
-    difftest.io.atomicResp := io.dcache.resp.fire
-    difftest.io.atomicAddr := paddr_reg
-    difftest.io.atomicData := data_reg
-    difftest.io.atomicMask := mask_reg
-    difftest.io.atomicFuop := fuop_reg
-    difftest.io.atomicOut  := resp_data_wire
+    val difftest = DifftestModule(new DiffAtomicEvent)
+    difftest.coreid := io.hartId
+    difftest.valid  := state === s_cache_resp_latch
+    difftest.addr   := paddr_reg
+    difftest.data   := data_reg
+    difftest.mask   := mask_reg
+    difftest.fuop   := fuop_reg
+    difftest.out    := resp_data_wire
   }
 
   if (env.EnableDifftest || env.AlwaysBasicDiff) {
     val uop = io.out.bits.uop
-    val difftest = Module(new DifftestLrScEvent)
-    difftest.io.clock := clock
-    difftest.io.coreid := io.hartId
-    difftest.io.valid := io.out.fire &&
+    val difftest = DifftestModule(new DiffLrScEvent)
+    difftest.coreid := io.hartId
+    difftest.valid := io.out.fire() &&
       (uop.ctrl.fuOpType === LSUOpType.sc_d || uop.ctrl.fuOpType === LSUOpType.sc_w)
-    difftest.io.success := is_lrsc_valid
+    difftest.success := is_lrsc_valid
   }
 }

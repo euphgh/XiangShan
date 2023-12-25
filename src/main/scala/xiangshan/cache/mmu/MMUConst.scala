@@ -33,6 +33,12 @@ case class TLBParameters
   fetchi: Boolean = false, // TODO: remove it
   fenceDelay: Int = 2,
   useDmode: Boolean = true,
+  NSets: Int = 1,
+  NWays: Int = 2,
+  Replacer: Option[String] = Some("plru"),
+  Associative: String = "fa", // must be fa
+
+  /* use less in dev-h, only for compile */
   normalNSets: Int = 1, // when da or sa
   normalNWays: Int = 8, // when fa or sa
   superNSets: Int = 1,
@@ -42,6 +48,7 @@ case class TLBParameters
   normalAssociative: String = "fa", // "fa", "sa", "da", "sa" is not supported
   superAssociative: String = "fa", // must be fa
   normalAsVictim: Boolean = false, // when get replace from fa, store it into sram
+  
   outReplace: Boolean = false,
   partialStaticPMP: Boolean = false, // partial static pmp result stored in entries
   outsideRecvFlush: Boolean = false, // if outside moudle waiting for tlb recv flush pipe
@@ -56,19 +63,19 @@ case class L2TLBParameters
   l1Associative: String = "fa",
   l1Replacer: Option[String] = Some("plru"),
   // l2
-  l2nSets: Int = 32,
-  l2nWays: Int = 2,
+  l2nSets: Int = 8,
+  l2nWays: Int = 4,
   l2Replacer: Option[String] = Some("setplru"),
   // l3
-  l3nSets: Int = 128,
-  l3nWays: Int = 4,
+  l3nSets: Int = 32,
+  l3nWays: Int = 8,
   l3Replacer: Option[String] = Some("setplru"),
   // sp
   spSize: Int = 16,
   spReplacer: Option[String] = Some("plru"),
   // filter
   ifilterSize: Int = 8,
-  dfilterSize: Int = 8,
+  dfilterSize: Int = 32,
   // miss queue, add more entries than 'must require'
   // 0 for easier bug trigger, please set as big as u can, 8 maybe
   missqueueExtendSize: Int = 0,
@@ -98,6 +105,11 @@ trait HasTlbConst extends HasXSParameter {
   val sectortlbwidth = log2Up(tlbcontiguous)
   val sectorppnLen = ppnLen - sectortlbwidth
   val sectorvpnLen = vpnLen - sectortlbwidth
+
+  val loadfiltersize = 16
+  val storefiltersize = 8
+  val prefetchfiltersize = 8
+
   val sramSinglePort = true
 
   val timeOutThreshold = 10000
@@ -175,7 +187,6 @@ trait HasTlbConst extends HasXSParameter {
     tp.x := ptePerm.x
     tp.w := ptePerm.w
     tp.r := ptePerm.r
-    tp.pm := DontCare
     tp
   }
 }

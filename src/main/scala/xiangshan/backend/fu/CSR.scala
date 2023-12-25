@@ -1439,21 +1439,20 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
 
   // Always instantiate basic difftest modules.
   if (env.AlwaysBasicDiff || env.EnableDifftest) {
-    val difftest = Module(new DifftestArchEvent)
-    difftest.io.clock := clock
-    difftest.io.coreid := csrio.hartId
-    difftest.io.intrNO := RegNext(RegNext(RegNext(difftestIntrNO)))
-    difftest.io.cause  := RegNext(RegNext(RegNext(Mux(csrio.exception.valid, causeNO, 0.U))))
-    difftest.io.exceptionPC := RegNext(RegNext(RegNext(dexceptionPC)))
+    val difftest = DifftestModule(new DiffArchEvent, delay = 3, dontCare = true)
+    difftest.coreid      := csrio.hartId
+    difftest.valid       := csrio.exception.valid
+    difftest.interrupt   := Mux(raiseIntr, causeNO, 0.U)
+    difftest.exception   := Mux(raiseException, causeNO, 0.U)
+    difftest.exceptionPC := dexceptionPC
     if (env.EnableDifftest) {
-      difftest.io.exceptionInst := RegNext(RegNext(RegNext(csrio.exception.bits.uop.cf.instr)))
+      difftest.exceptionInst := csrio.exception.bits.uop.cf.instr
     }
   }
 
   // Always instantiate basic difftest modules.
   if (env.AlwaysBasicDiff || env.EnableDifftest) {
     val difftest = DifftestModule(new DiffCSRState)
-    difftest.clock := clock
     difftest.coreid := csrio.hartId
     difftest.priviledgeMode := priviledgeMode
     difftest.mstatus := mstatus
@@ -1477,7 +1476,6 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
 
   if (env.AlwaysBasicDiff || env.EnableDifftest) {
     val difftest = DifftestModule(new DiffHCSRState)
-    difftest.clock := clock
     difftest.coreid := csrio.hartId
     difftest.virtMode := virtMode
     difftest.mtval2 := mtval2
@@ -1499,14 +1497,13 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
   }
  
   if(env.AlwaysBasicDiff || env.EnableDifftest) {
-    val difftest = Module(new DifftestDebugMode)
-    difftest.io.clock := clock
-    difftest.io.coreid := csrio.hartId
-    difftest.io.debugMode := debugMode
-    difftest.io.dcsr := dcsr
-    difftest.io.dpc := dpc
-    difftest.io.dscratch0 := dscratch0
-    difftest.io.dscratch1 := dscratch1
+    val difftest = DifftestModule(new DiffDebugMode)
+    difftest.coreid := csrio.hartId
+    difftest.debugMode := debugMode
+    difftest.dcsr := dcsr
+    difftest.dpc := dpc
+    difftest.dscratch0 := dscratch0
+    difftest.dscratch1 := dscratch1
   }
 }
 

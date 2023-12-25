@@ -322,10 +322,12 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   fromITLB.map(_.ready := true.B)
   // chose tlb req between s0 and s1
   for (i <- 0 until PortNumber) {
-    toITLB(i).valid         := Mux(s1_need_itlb(i), toITLB_s1_valid(i), toITLB_s0_valid(i))
-    toITLB(i).bits.size     := Mux(s1_need_itlb(i), toITLB_s1_size(i), toITLB_s0_size(i))
-    toITLB(i).bits.vaddr    := Mux(s1_need_itlb(i), toITLB_s1_vaddr(i), toITLB_s0_vaddr(i))
-    toITLB(i).bits.debug.pc := Mux(s1_need_itlb(i), toITLB_s1_debug_pc(i), toITLB_s0_debug_pc(i))
+    when(s1_need_itlb(i)) {
+      toITLB(i).valid         := toITLB_s1_valid(i)
+      toITLB(i).bits.size     := toITLB_s1_size(i)
+      toITLB(i).bits.vaddr    := toITLB_s1_vaddr(i)
+      toITLB(i).bits.debug.pc := toITLB_s1_debug_pc(i)
+    }
   }
   toITLB.map{port =>
     port.bits.cmd                 := TlbCmd.exec
