@@ -48,6 +48,9 @@ case class TLBParameters
   normalAssociative: String = "fa", // "fa", "sa", "da", "sa" is not supported
   superAssociative: String = "fa", // must be fa
   normalAsVictim: Boolean = false, // when get replace from fa, store it into sram
+  sameCycle:Boolean = true,
+  missSameCycle:Boolean = false,
+  shouldBlock:Boolean = false,
   
   outReplace: Boolean = false,
   partialStaticPMP: Boolean = false, // partial static pmp result stored in entries

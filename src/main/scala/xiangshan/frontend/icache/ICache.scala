@@ -28,7 +28,7 @@ import xiangshan.frontend._
 import xiangshan.cache._
 import utils.{SRAMTemplate, _}
 import xiangshan.backend.fu.PMPReqBundle
-import xiangshan.cache.mmu.{BlockTlbRequestIO, TlbReq}
+import xiangshan.cache.mmu.{TlbRequestIO, TlbReq}
 
 case class ICacheParameters(
     nSets: Int = 256,
@@ -450,7 +450,7 @@ class ICacheIO(implicit p: Parameters) extends ICacheBundle
   val fetch       = new ICacheMainPipeBundle
   val toIFU       = Output(Bool())
   val pmp         = Vec(PortNumber + 1, new ICachePMPBundle)
-  val itlb        = Vec(PortNumber * 2 + 1, new BlockTlbRequestIO)
+  val itlb        = Vec(PortNumber * 2 + 1, new TlbRequestIO)
   val perfInfo    = Output(new ICachePerfInfo)
   val error       = new L1CacheErrorInfo
   /* Cache Instruction */

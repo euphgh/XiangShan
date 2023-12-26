@@ -102,7 +102,7 @@ class ICacheMainPipeInterface(implicit p: Parameters) extends ICacheBundle {
    */
   val fetch       = new ICacheMainPipeBundle
   val pmp         = Vec(PortNumber, new ICachePMPBundle)
-  val itlb        = Vec(PortNumber * 2, new BlockTlbRequestIO)
+  val itlb        = Vec(PortNumber * 2, new TlbRequestIO)
   val respStall   = Input(Bool())
   val perfInfo = Output(new ICachePerfInfo)
 
@@ -234,12 +234,15 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
 
   toITLB.map{port =>
     port.bits.cmd                 := TlbCmd.exec
-    port.bits.robIdx              := DontCare
+    port.bits.memidx              := DontCare
+    port.bits.debug.robIdx        := DontCare
+    port.bits.no_translate        := false.B
     port.bits.debug.isFirstIssue  := DontCare
+    port.bits.kill                := DontCare
     port.bits.hlvx                := DontCare
     port.bits.hyperinst           := DontCare
   }
-
+  io.itlb.foreach(_.req_kill := false.B)
   /** ITLB miss wait logic */
 
   //** tlb 0/1 port result **//

@@ -139,7 +139,7 @@ abstract class XSCoreBase()(implicit p: config.Parameters) extends LazyModule
   val plic_int_sink = IntSinkNode(IntSinkPortSimple(2, 1))
   // outer facing nodes
   val frontend = LazyModule(new Frontend())
-  val ptw = LazyModule(new PTWWrapper())
+  val ptw = LazyModule(new L2TLBWrapper())
   val ptw_to_l2_buffer = LazyModule(new TLBuffer)
   val csrOut = BundleBridgeSource(Some(() => new DistributedCSRIO()))
 
@@ -414,14 +414,17 @@ class XSCoreImp(outer: XSCoreBase) extends LazyModuleImp(outer)
   memBlock.io.lsqio.rob <> ctrlBlock.io.robio.lsq
   memBlock.io.lsqio.exceptionAddr.isStore := CommitType.lsInstIsStore(ctrlBlock.io.robio.exception.bits.uop.ctrl.commitType)
 
-  val itlbRepeater1 = PTWFilter(itlbParams.fenceDelay, frontend.io.ptw, fenceio.sfence, csrioIn.tlb, l2tlbParams.ifilterSize)
-  val itlbRepeater2 = PTWRepeaterNB(passReady = false, itlbParams.fenceDelay, itlbRepeater1.io.ptw, ptw.io.tlb(0), fenceio.sfence, csrioIn.tlb)
-  val dtlbRepeater1  = PTWFilter(ldtlbParams.fenceDelay, memBlock.io.ptw, fenceio.sfence, csrioIn.tlb, l2tlbParams.dfilterSize)
-  val dtlbRepeater2  = PTWRepeaterNB(passReady = false, ldtlbParams.fenceDelay, dtlbRepeater1.io.ptw, ptw.io.tlb(1), fenceio.sfence, csrioIn.tlb)
+  val itlbRepeater  = PTWRepeaterNB(passReady = false, itlbParams.fenceDelay, frontend.io.ptw, ptw.io.tlb(0), fenceio.sfence, csrioIn.tlb)
+  val dtlbRepeater  = PTWNewFilter(2, memBlock.io.ptw, ptw.io.tlb(0), fenceio.sfence, csrioIn.tlb, l2tlbParams.dfilterSize)
+
+  // val itlbRepeater1 = PTWRepeater(frontend.io.ptw, fenceio.sfence, csrioIn.tlb)
+  // val itlbRepeater2 = PTWRepeater(itlbRepeater1.io.ptw, ptw.io.tlb(0), fenceio.sfence, csrioIn.tlb)
+  // val dtlbRepeater1  = PTWFilter(memBlock.io.ptw, fenceio.sfence, csrioIn.tlb, l2tlbParams.filterSize)
+  // val dtlbRepeater2  = PTWRepeaterNB(passReady = false, dtlbRepeater1.io.ptw, ptw.io.tlb(1), fenceio.sfence, csrioIn.tlb)
+
   ptw.io.sfence <> fenceio.sfence
   ptw.io.csr.tlb <> csrioIn.tlb
-  ptw.io.csr.distribute_csr <> csrioIn.customCtrl.distribute_csr
-  ptw.io.csr.prefercache <> csrioIn.customCtrl.ptw_prefercache_enable
+  
 
   // if l2 prefetcher use stream prefetch, it should be placed in XSCore
   io.l2_pf_enable := csrioIn.customCtrl.l2_pf_enable
@@ -429,11 +432,12 @@ class XSCoreImp(outer: XSCoreBase) extends LazyModuleImp(outer)
   // Modules are reset one by one
   val resetTree = ResetGenNode(
     Seq(
-      ModuleNode(memBlock), ModuleNode(dtlbRepeater1),
+      ModuleNode(memBlock), 
+      // ModuleNode(dtlbRepeater1),
       ResetGenNode(Seq(
-        ModuleNode(itlbRepeater2),
+        ModuleNode(itlbRepeater),
         ModuleNode(ptw),
-        ModuleNode(dtlbRepeater2),
+        ModuleNode(dtlbRepeater),
         ModuleNode(ptw_to_l2_buffer),
       )),
       ResetGenNode(Seq(
@@ -444,7 +448,8 @@ class XSCoreImp(outer: XSCoreBase) extends LazyModuleImp(outer)
         ResetGenNode(Seq(
           ModuleNode(ctrlBlock),
           ResetGenNode(Seq(
-            ModuleNode(frontend), ModuleNode(itlbRepeater1)
+            ModuleNode(frontend)
+            // , ModuleNode(itlbRepeater1)
           ))
         ))
       ))

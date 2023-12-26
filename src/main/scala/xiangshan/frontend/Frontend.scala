@@ -67,6 +67,8 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
   val ibuffer =  Module(new Ibuffer)
   val ftq = Module(new Ftq)
 
+  val needFlush = RegNext(io.backend.toFtq.redirect.valid)
+
   val tlbCsr = DelayN(io.tlbCsr, 2)
   val csrCtrl = DelayN(io.csrCtrl, 2)
   val sfence = RegNext(RegNext(io.sfence))
@@ -112,20 +114,19 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
   // ifu.io.iTLBInter.resp  <> itlb_requestors(1).resp
   // icache.io.itlb(1).resp <> itlb_requestors(1).resp
 
-  io.ptw <> TLB(
-    //in = Seq(icache.io.itlb(0), icache.io.itlb(1)),
-    in = Seq(itlb_requestors(0),itlb_requestors(1),itlb_requestors(2),itlb_requestors(3),itlb_requestors(4),itlb_requestors(5)),
-    sfence = DelayN(io.sfence, 1),
-    csr = DelayN(io.tlbCsr, 1),
-    width = 6,
-    nRespDups = 1,
-    shouldBlock = true,
-    itlbParams
-  )
+  val itlb = Module(new TLB(6, nRespDups = 1, Seq.fill(6)(false), itlbParams))
+  itlb.io.requestor.take(5) zip icache.io.itlb foreach {case (a,b) => a <> b}
+  itlb.io.requestor.last <> ifu.io.iTLBInter
+  itlb.io.hartId := io.hartId
+  itlb.io.base_connect(io.sfence, io.tlbCsr)
+  itlb.io.flushPipe.map(_ := needFlush)
+
+  val itlb_ptw = Wire(new VectorTlbPtwIO(6))
+  itlb_ptw.connect(itlb.io.ptw)
+  val itlbRepeater1 = PTWFilter(itlbParams.fenceDelay, itlb_ptw, sfence, tlbCsr, l2tlbParams.ifilterSize)
+  io.ptw <> itlbRepeater1.io.ptw
 
   icache.io.prefetch <> ftq.io.toPrefetch
-
-  val needFlush = RegNext(io.backend.toFtq.redirect.valid)
 
   //IFU-Ftq
   ifu.io.ftqInter.fromFtq <> ftq.io.toIfu

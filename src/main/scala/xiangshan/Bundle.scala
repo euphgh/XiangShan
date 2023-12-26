@@ -423,10 +423,23 @@ class FrontendToCtrlIO(implicit p: Parameters) extends XSBundle {
   val toFtq = Flipped(new CtrlToFtqIO)
 }
 
-class SatpStruct extends Bundle {
+class SatpStruct(implicit p: Parameters) extends XSBundle {
   val mode = UInt(4.W)
   val asid = UInt(16.W)
   val ppn  = UInt(44.W)
+}
+
+class TlbSatpBundle(implicit p: Parameters) extends SatpStruct {
+  val changed = Bool()
+
+  def apply(satp_value: UInt): Unit = {
+    require(satp_value.getWidth == XLEN)
+    val sa = satp_value.asTypeOf(new SatpStruct)
+    mode := sa.mode
+    asid := sa.asid
+    ppn := Cat(0.U((44-PAddrBits).W), sa.ppn(PAddrBits-1, 0)).asUInt
+    changed := DataChanged(sa.asid) // when ppn is changed, software need do the flush
+  }
 }
 
 class TlbCsrBundle(implicit p: Parameters) extends XSBundle {

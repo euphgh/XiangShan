@@ -1144,6 +1144,7 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
   // Use: DelayN(2).io_out_bits_isInterrupt -> CSR.csrio_exception_bits_isInterrupt -> mcause
   val intrNOReg = DelayN(intrNO, 4)
   val hasIntr = csrio.exception.valid && csrio.exception.bits.isInterrupt
+  val raiseIntr = hasIntr
   val ivmEnable = tlbBundle.priv.imode < ModeM && satp.asTypeOf(new SatpStruct).mode === 8.U
   val iexceptionPC = Mux(ivmEnable, SignExt(csrio.exception.bits.uop.cf.pc, XLEN), csrio.exception.bits.uop.cf.pc)
   val iexceptionGPAddr = Mux(ivmEnable, SignExt(csrio.exception.bits.uop.cf.gpaddr, XLEN), csrio.exception.bits.uop.cf.gpaddr)
@@ -1280,7 +1281,6 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
   val delegVS = virtMode && delegS && hdeleg(causeNO(7, 0)) && (priviledgeMode < ModeM)
   val clearTval = !updateTval || raiseIntr
   val clearTval_h = !updateTval_h || raiseIntr
-  val isXRet = io.in.valid && func === CSROpType.jmp && !isEcall && !isEbreak
   val isHyperInst = csrio.exception.bits.uop.ctrl.isHyperInst
   // ctrl block will use theses later for flush
   val isXRetFlag = RegInit(false.B)
