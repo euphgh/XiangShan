@@ -27,6 +27,7 @@ import freechips.rocketchip.tilelink.TLBuffer
 import huancun.utils.{ModuleNode, ResetGen, ResetGenNode}
 import system.HasSoCParameter
 import utils._
+import utility._
 import xiangshan.backend._
 import xiangshan.backend.exu.{ExuConfig, Wb2Ctrl, WbArbiterWrapper}
 import xiangshan.cache.mmu._

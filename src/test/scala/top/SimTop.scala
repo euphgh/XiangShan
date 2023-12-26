@@ -21,7 +21,7 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import chisel3._
 import device.{AXI4RAMWrapper, SimJTAG}
 import freechips.rocketchip.diplomacy.{DisableMonitors, LazyModule, LazyModuleImp}
-import utils.GTimer
+import utility.GTimer
 import xiangshan.{DebugOptions, DebugOptionsKey}
 import chipsalliance.rocketchip.config._
 import freechips.rocketchip.devices.debug._

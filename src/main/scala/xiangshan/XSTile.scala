@@ -12,7 +12,7 @@ import huancun.{HCCacheParamsKey, HuanCun}
 import huancun.utils.ResetGen
 import system.HasSoCParameter
 import top.BusPerfMonitor
-import utils.{TLClientsMerger, TLEdgeBuffer, IntBuffer}
+import utility.{TLClientsMerger, TLEdgeBuffer, IntBuffer}
 
 class L1BusErrorUnitInfo(implicit val p: Parameters) extends Bundle with HasSoCParameter {
   val ecc_error = Valid(UInt(soc.PAddrBits.W))

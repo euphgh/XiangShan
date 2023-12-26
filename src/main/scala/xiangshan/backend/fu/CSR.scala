@@ -21,7 +21,8 @@ import chisel3._
 import chisel3.util._
 import difftest._
 import freechips.rocketchip.util._
-import utils.MaskedRegMap.WritableMask
+import utility.MaskedRegMap.WritableMask
+import utility._
 import utils._
 import xiangshan.ExceptionNO._
 import xiangshan._

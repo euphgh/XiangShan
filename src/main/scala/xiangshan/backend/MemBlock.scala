@@ -24,6 +24,7 @@ import freechips.rocketchip.tile.HasFPUParameters
 import huancun.PrefetchRecv
 import huancun.utils.{RegNextN, ValidIODelay}
 import utils._
+import utility._
 import xiangshan._
 import xiangshan.backend.exu.StdExeUnit
 import xiangshan.backend.fu._

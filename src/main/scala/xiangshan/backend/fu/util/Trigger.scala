@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import xiangshan.XSBundle
 import chipsalliance.rocketchip.config.Parameters
-import utils.ConsecutiveOnes
+import utility.ConsecutiveOnes
 
 trait SdtrigExt {
   implicit val p: Parameters
