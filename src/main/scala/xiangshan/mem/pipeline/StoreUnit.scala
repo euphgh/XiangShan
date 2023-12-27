@@ -47,22 +47,22 @@ class StoreUnit_S0(implicit p: Parameters) extends XSModule {
   )
   val saddr = Cat(saddr_hi, saddr_lo(11,0))
   val isHsv = WireInit(LSUOpType.isHsv(io.in.bits.uop.ctrl.fuOpType))
+  val uop = io.in.bits.uop
 
-  io.tlb.req.valid             := s0_valid
-  io.tlb.req.bits.vaddr        := s0_saddr
-  io.tlb.req.bits.cmd          := TlbCmd.write
-  io.tlb.req.bits.size         := LSUOpType.size(s0_in.uop.ctrl.fuOpType)
-  io.tlb.req.bits.kill         := DontCare
-  io.tlb.req.bits.memidx.is_ld := false.B
-  io.tlb.req.bits.memidx.is_st := true.B
-  io.tlb.req.bits.memidx.idx   := s0_in.uop.sqIdx.value
-  io.tlb.req.bits.debug.robIdx := s0_in.uop.robIdx
-  io.tlb.req.bits.no_translate := false.B
-  io.tlb.req.bits.debug.pc     := s0_in.uop.cf.pc
-  io.tlb.req.bits.debug.isFirstIssue := s0_isFirstIssue
-  io.tlb.req_kill              := false.B
-  io.tlb.req.bits.hyperinst    := LSUOpType.isHsv(s0_in.uop.ctrl.fuOpType)
-  io.tlb.req.bits.hlvx         := false.B
+  io.dtlbReq.valid             := io.in.valid
+  io.dtlbReq.bits.vaddr        := saddr
+  io.dtlbReq.bits.cmd          := TlbCmd.write
+  io.dtlbReq.bits.size         := LSUOpType.size(uop.ctrl.fuOpType)
+  io.dtlbReq.bits.kill         := false.B
+  io.dtlbReq.bits.memidx.is_ld := false.B
+  io.dtlbReq.bits.memidx.is_st := true.B
+  io.dtlbReq.bits.memidx.idx   := uop.sqIdx.value
+  io.dtlbReq.bits.debug.robIdx := uop.robIdx
+  io.dtlbReq.bits.no_translate := false.B
+  io.dtlbReq.bits.debug.pc     := uop.cf.pc
+  io.dtlbReq.bits.debug.isFirstIssue := io.isFirstIssue
+  io.dtlbReq.bits.hyperinst    := LSUOpType.isHsv(uop.ctrl.fuOpType)
+  io.dtlbReq.bits.hlvx         := false.B
   
   // Dcache access here: not **real** dcache write
   // just read meta and tag in dcache, to find out the store will hit or miss
@@ -167,16 +167,9 @@ class StoreUnit_S2(implicit p: Parameters) extends XSModule {
   val io = IO(new Bundle() {
     val in = Flipped(Decoupled(new LsPipelineBundle))
     val pmpResp = Flipped(new PMPRespBundle)
-    val static_pm = Input(Valid(Bool()))
     val out = Decoupled(new LsPipelineBundle)
   })
   val pmp = WireInit(io.pmpResp)
-  when (io.static_pm.valid) {
-    pmp.ld := false.B
-    pmp.st := false.B
-    pmp.instr := false.B
-    pmp.mmio := io.static_pm.bits
-  }
 
   val s2_exception = ExceptionNO.selectByFu(io.out.bits.uop.cf.exceptionVec, staCfg).asUInt.orR
   val is_mmio = io.in.bits.mmio || pmp.mmio
@@ -253,7 +246,6 @@ class StoreUnit(implicit p: Parameters) extends XSModule {
   io.feedbackSlow.valid := RegNext(store_s1.io.rsFeedback.valid && !store_s1.io.out.bits.uop.robIdx.needFlush(io.redirect))
 
   store_s2.io.pmpResp <> io.pmp
-  store_s2.io.static_pm := RegNext(io.tlb.resp.bits.static_pm)
   io.lsq_replenish := store_s2.io.out.bits // mmio and exception
   PipelineConnect(store_s2.io.out, store_s3.io.in, true.B, store_s2.io.out.bits.uop.robIdx.needFlush(io.redirect))
 

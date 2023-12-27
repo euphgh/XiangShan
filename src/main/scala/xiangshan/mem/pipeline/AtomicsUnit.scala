@@ -132,10 +132,10 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
     // keep firing until tlb hit
     io.dtlb.req.valid       := true.B
     io.dtlb.req.bits.vaddr  := in.src(0)
-    io.dtlb.req.bits.robIdx := in.uop.robIdx
     io.dtlb.resp.ready      := true.B
     io.dtlb.req.bits.cmd    := Mux(isLr, TlbCmd.atom_read, TlbCmd.atom_write)
     io.dtlb.req.bits.debug.pc := in.uop.cf.pc
+    io.dtlb.req.bits.debug.robIdx := in.uop.robIdx
     io.dtlb.req.bits.debug.isFirstIssue := false.B
 
     when(io.dtlb.resp.fire){
@@ -391,7 +391,7 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
   if (env.EnableDifftest) {
     val difftest = DifftestModule(new DiffAtomicEvent)
     difftest.coreid := io.hartId
-    difftest.valid  := state === s_cache_resp_latch
+    difftest.valid  := state === s_cache_resp
     difftest.addr   := paddr_reg
     difftest.data   := data_reg
     difftest.mask   := mask_reg

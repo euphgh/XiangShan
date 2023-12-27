@@ -44,8 +44,8 @@ class IPredfetchIO(implicit p: Parameters) extends IPrefetchBundle {
   val fromFtq         = Flipped(new FtqPrefechBundle)
   val iTLBInter       = new TlbRequestIO
   val pmp             = new ICachePMPBundle
-  val toIMeta         = Decoupled(new ICacheMetaReadReqBundle)
-  val fromIMeta       = Input(new ICacheMetaReadRespBundle)
+  val toIMeta         = Decoupled(new ICacheReadBundle)
+  val fromIMeta       = Input(new ICacheMetaRespBundle)
   val toMissUnit      = new IPrefetchToMissUnit
   val fromMSHR        = Flipped(Vec(PortNumber,ValidIO(UInt(PAddrBits.W))))
 
@@ -105,7 +105,6 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
   toITLB.bits.debug.pc := p0_vaddr
 
   toITLB.bits.cmd                 := TlbCmd.exec
-  toITLB.bits.robIdx              := DontCare
   toITLB.bits.debug.isFirstIssue  := DontCare
 
   toITLB.bits.memidx              := DontCare
@@ -154,25 +153,17 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
 
   /** Prefetch Stage 2: filtered req PIQ enqueue */
   val p2_valid =  generatePipeControl(lastFire = p1_fire, thisFire = p2_fire || p2_discard, thisFlush = false.B, lastFlush = false.B)
-  val p2_pmp_fire = p2_valid
-  val pmpExcpAF = fromPMP.instr
 
-  val p2_paddr     = RegEnable(p1_paddr,  p1_fire)
+  val p2_paddr     = RegEnable(tlb_resp_paddr,  p1_fire)
   val p2_except_pf = RegEnable(tlb_resp_pf, p1_fire)
   val p2_except_gpf = RegEnable(tlb_resp_gpf, p1_fire)
-  val p2_except_af = DataHoldBypass(pmpExcpAF, p2_pmp_fire) || RegEnable(tlb_resp_af, p1_fire)
-  val p2_mmio      = DataHoldBypass(io.pmp.resp.mmio && !p2_except_af && !p2_except_pf && !p2_except_gpf, p2_pmp_fire)
-  val p2_vaddr   =  RegEnable(p1_vaddr,    p1_fire)
-
-  val p2_paddr     = RegEnable(next = tlb_resp_paddr,  enable = p1_fire)
-  val p2_except_pf = RegEnable(next =tlb_resp_pf, enable = p1_fire)
-  val p2_except_tlb_af = RegEnable(next = tlb_resp_af, enable = p1_fire)
+  val p2_except_tlb_af = RegEnable(tlb_resp_af, p1_fire)
 
   /*when a prefetch req meet with a miss req in MSHR cancle the prefetch req */
   val p2_check_in_mshr = VecInit(io.fromMSHR.map(mshr => mshr.valid && mshr.bits === addrAlign(p2_paddr, blockBytes, PAddrBits))).reduce(_||_)
 
   //TODO wait PMP logic
-  val p2_exception  = VecInit(Seq(p2_except_tlb_af, p2_except_pf)).reduce(_||_)
+  val p2_exception  = VecInit(Seq(p2_except_tlb_af, p2_except_pf, p2_except_gpf)).reduce(_||_)
 
   p2_ready :=   p2_fire || p2_discard || !p2_valid
   p2_fire  :=   p2_valid && !p2_exception && p3_ready

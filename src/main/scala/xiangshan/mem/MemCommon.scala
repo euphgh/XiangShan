@@ -73,60 +73,6 @@ class LsPipelineBundle(implicit p: Parameters) extends XSBundle {
 
   // For debug usage
   val isFirstIssue = Bool()
-  val hasROBEntry = Bool()
-
-  // For load replay
-  val isLoadReplay = Bool()
-  val replayCarry = new ReplayCarry
-
-  // For dcache miss load
-  val mshrid = UInt(log2Up(cfg.nMissEntries).W)
-  val handledByMSHR = Bool()
-  val replacementUpdated = Bool()
-
-  val forward_tlDchannel = Bool()
-  val dcacheRequireReplay = Bool()
-
-  // loadQueueReplay index.
-  val sleepIndex = UInt(log2Up(LoadQueueReplaySize).W)
-}
-
-class LdPrefetchTrainBundle(implicit p: Parameters) extends LsPipelineBundle {
-  val meta_prefetch = Bool()
-  val meta_access = Bool()
-
-  def fromLsPipelineBundle(input: LsPipelineBundle) = {
-    vaddr := input.vaddr
-    paddr := input.paddr
-    gpaddr := input.gpaddr
-    mask := input.mask
-    data := input.data
-    uop := input.uop
-    wlineflag := input.wlineflag
-    miss := input.miss
-    tlbMiss := input.tlbMiss
-    ptwBack := input.ptwBack
-    mmio := input.mmio
-    rsIdx := input.rsIdx
-    forwardMask := input.forwardMask
-    forwardData := input.forwardData
-    isPrefetch := input.isPrefetch
-    isHWPrefetch := input.isHWPrefetch
-    isFirstIssue := input.isFirstIssue
-    hasROBEntry := input.hasROBEntry
-    dcacheRequireReplay := input.dcacheRequireReplay
-    sleepIndex := input.sleepIndex
-
-    meta_prefetch := DontCare
-    meta_access := DontCare
-    forward_tlDchannel := DontCare
-    mshrid := DontCare
-    replayCarry := DontCare
-    atomic := DontCare
-    isLoadReplay := DontCare
-    handledByMSHR := DontCare
-    replacementUpdated := DontCare
-  }
 }
 
 class LqWriteBundle(implicit p: Parameters) extends LsPipelineBundle {
@@ -288,7 +234,7 @@ object AddPipelineReg {
   def apply[T <: Data]
   (left: DecoupledIO[T], right: DecoupledIO[T], isFlush: Bool,
    moduleName: Option[String] = None
-  ){
+  ) = {
     val pipelineReg = Module(new PipelineRegModule[T](left.bits.cloneType))
     if(moduleName.nonEmpty) pipelineReg.suggestName(moduleName.get)
     pipelineReg.io.in <> left

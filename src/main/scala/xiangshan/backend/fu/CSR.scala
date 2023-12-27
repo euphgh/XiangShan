@@ -1176,9 +1176,8 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
   val hasInstrAccessFault = csrio.exception.bits.uop.cf.exceptionVec(instrAccessFault) && raiseException
   val hasLoadAccessFault = csrio.exception.bits.uop.cf.exceptionVec(loadAccessFault) && raiseException
   val hasStoreAccessFault = csrio.exception.bits.uop.cf.exceptionVec(storeAccessFault) && raiseException
-  val hasbreakPoint = csrio.exception.bits.uop.cf.exceptionVec(breakPoint) && raiseException
+  val hasBreakPoint = csrio.exception.bits.uop.cf.exceptionVec(breakPoint) && raiseException
   val hasSingleStep = csrio.exception.bits.uop.ctrl.singleStep && raiseException
-  val hasTriggerHit = (csrio.exception.bits.uop.cf.trigger.hit) && raiseException
   val hasInstGuestPageFault = csrio.exception.bits.uop.cf.exceptionVec(instrGuestPageFault) && raiseException
   val hasLoadGuestPageFault = csrio.exception.bits.uop.cf.exceptionVec(loadGuestPageFault) && raiseException
   val hasStoreGuestPageFault = csrio.exception.bits.uop.cf.exceptionVec(storeGuestPageFault) && raiseException
@@ -1196,7 +1195,9 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
 
   val hasDebugEbreakException = hasBreakPoint && ebreakEnterDebugMode
   val hasDebugTriggerException = hasTriggerFire && triggerFireAction === TrigActionEnum.DEBUG_MODE
-  val hasDebugException = hasDebugEbreakException || hasDebugTriggerException || hasSingleStep
+  val hasDebugException = hasBreakPoint && !debugMode && ebreakEnterDebugMode
+  // val hasDebugException = hasDebugEbreakException || hasDebugTriggerException || hasSingleStep
+  // val hasDebugExceptionIntr = !debugMode && (hasDebugException || hasDebugIntr || hasSingleStep || hasTriggerHit && triggerAction) // TODO
   val hasDebugTrap = hasDebugException || hasDebugIntr
   val ebreakEnterParkLoop = debugMode && hasExceptionIntr
 
@@ -1306,7 +1307,7 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
   csrio.trapTarget := RegEnable(
     MuxCase(pcFromXtvec, Seq(
       (isXRetFlag && !illegalXret) -> retTargetReg,
-      (raiseDebugExceptionIntr || ebreakEnterParkLoop) -> debugTrapTarget
+      ((hasDebugTrap && !debugMode) || ebreakEnterParkLoop) -> debugTrapTarget
     )),
     isXRetFlag || csrio.exception.valid)
 

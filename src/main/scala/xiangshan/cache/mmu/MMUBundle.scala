@@ -217,7 +217,7 @@ class TlbEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parameters) 
     else if (!pageNormal) {
       val tag_match_hi = tag(vpnnLen*2-1, vpnnLen) === vpn(vpnnLen*3-1, vpnnLen*2)
       val tag_match_mi = tag(vpnnLen-1, 0) === vpn(vpnnLen*2-1, vpnnLen)
-      val tag_match = tag_match_hi && (level.get.asBool() || tag_match_mi)
+      val tag_match = tag_match_hi && (level.get.asBool || tag_match_mi)
       asid_hit && tag_match && vmid_hit
     }
     else {
@@ -337,7 +337,7 @@ class TlbSectorEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parame
     else if (!pageNormal) {
       val tag_match_hi = tag(vpnnLen * 2 - 1, vpnnLen) === vpn(vpnnLen * 3 - 1, vpnnLen * 2)
       val tag_match_mi = tag(vpnnLen - 1, 0) === vpn(vpnnLen * 2 - 1, vpnnLen)
-      val tag_match = tag_match_hi && (level.get.asBool() || tag_match_mi)
+      val tag_match = tag_match_hi && (level.get.asBool || tag_match_mi)
       asid_hit && tag_match && addr_low_hit && vmid_hit && pteidx_hit
     }
     else {
@@ -370,7 +370,7 @@ class TlbSectorEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parame
     else if (!pageNormal) {
       val tag_match_hi = tag(vpnnLen * 2 - 1, vpnnLen - sectortlbwidth) === vpn(vpnnLen * 3 - 1, vpnnLen * 2)
       val tag_match_mi = tag(vpnnLen - 1, 0) === vpn(vpnnLen * 2 - 1, vpnnLen)
-      val tag_match = tag_match_hi && (level.get.asBool() || tag_match_mi)
+      val tag_match = tag_match_hi && (level.get.asBool || tag_match_mi)
       vpn_hit := asid_hit && tag_match
     }
     else {
@@ -601,8 +601,8 @@ class MemBlockidxBundle(implicit p: Parameters) extends TlbBundle {
   val is_ld = Bool()
   val is_st = Bool()
   val idx =
-    if (VirtualLoadQueueSize >= StoreQueueSize) {
-      val idx = UInt(log2Ceil(VirtualLoadQueueSize).W)
+    if (LoadQueueSize >= StoreQueueSize) {
+      val idx = UInt(log2Ceil(LoadQueueSize).W)
       idx
     } else {
       val idx = UInt(log2Ceil(StoreQueueSize).W)
@@ -683,6 +683,26 @@ class TlbPtwIOwithMemIdx(Width: Int = 1)(implicit p: Parameters) extends TlbBund
   override def toPrintable: Printable = {
     p"req(0):${req(0).valid} ${req(0).ready} ${req(0).bits} | resp:${resp.valid} ${resp.ready} ${resp.bits}"
   }
+}
+
+class TlbHintReq(implicit p: Parameters) extends TlbBundle {
+  val id = Output(UInt(log2Up(loadfiltersize).W))
+  val full = Output(Bool())
+}
+
+class TLBHintResp(implicit p: Parameters) extends TlbBundle {
+  val id = Output(UInt(log2Up(loadfiltersize).W))
+  // When there are multiple matching entries for PTW resp in filter
+  // e.g. vaddr 0, 0x80000000. vaddr 1, 0x80010000
+  // these two vaddrs are not in a same 4K Page, so will send to ptw twice
+  // However, when ptw resp, if they are in a 1G or 2M huge page
+  // The two entries will both hit, and both need to replay
+  val replay_all = Output(Bool())
+}
+
+class TlbHintIO(implicit p: Parameters) extends TlbBundle {
+  val req = Vec(exuParameters.LduCnt, new TlbHintReq)
+  val resp = ValidIO(new TLBHintResp)
 }
 
 class MMUIOBaseBundle(implicit p: Parameters) extends TlbBundle {
@@ -841,7 +861,7 @@ class PtwEntry(tagLen: Int, hasPerm: Boolean = false, hasLevel: Boolean = false)
     }
   }
 
-  def refill(vpn: UInt, asid: UInt, vmid: UInt, pte: UInt, level: UInt = 0.U, prefetch: Bool, valid: Bool = false.B) {
+  def refill(vpn: UInt, asid: UInt, vmid: UInt, pte: UInt, level: UInt = 0.U, prefetch: Bool, valid: Bool = false.B) = {
     require(this.asid.getWidth <= asid.getWidth) // maybe equal is better, but ugly outside
 
     tag := vpn(vpnLen - 1, vpnLen - tagLen)

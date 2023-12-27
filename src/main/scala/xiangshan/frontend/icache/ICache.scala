@@ -27,6 +27,7 @@ import xiangshan._
 import xiangshan.frontend._
 import xiangshan.cache._
 import utility.{SRAMTemplate, _}
+import utils._
 import xiangshan.backend.fu.PMPReqBundle
 import xiangshan.cache.mmu.{TlbRequestIO, TlbReq}
 

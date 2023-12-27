@@ -167,7 +167,7 @@ class LsqWrappper(implicit p: Parameters) extends XSModule with HasDCacheParamet
   // address will be used at the next cycle after exception is triggered
   io.exceptionAddr.vaddr := Mux(RegNext(io.exceptionAddr.isStore), storeQueue.io.exceptionAddr.vaddr, loadQueue.io.exceptionAddr.vaddr)
   io.exceptionAddr.gpaddr := Mux(RegNext(io.exceptionAddr.isStore), storeQueue.io.exceptionAddr.gpaddr, loadQueue.io.exceptionAddr.gpaddr)
-  io.issuePtrExt := storeQueue.io.stAddrReadySqPtr
+  io.issuePtrExt := storeQueue.io.issuePtrExt
 
   // naive uncache arbiter
   val s_idle :: s_load :: s_store :: Nil = Enum(3)

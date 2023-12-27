@@ -114,7 +114,7 @@ class StoreQueue(implicit p: Parameters) extends XSModule
   val gpaddrModule = Module(new SQAddrModule(
     dataWidth = GPAddrBits,
     numEntries = StoreQueueSize,
-    numRead = EnsbufferWidth + 1,
+    numRead = StorePipelineWidth + 1,
     numWrite = StorePipelineWidth,
     numForward = StorePipelineWidth
   ))
@@ -192,8 +192,8 @@ class StoreQueue(implicit p: Parameters) extends XSModule
   }
 
   // no inst will be committed 1 cycle before tval update
-  vaddrModule.io.raddr(EnsbufferWidth) := (cmtPtrExt(0) + commitCount).value
-  gpaddrModule.io.raddr(EnsbufferWidth) := (cmtPtrExt(0) + commitCount).value
+  vaddrModule.io.raddr(StorePipelineWidth) := (cmtPtrExt(0) + commitCount).value
+  gpaddrModule.io.raddr(StorePipelineWidth) := (cmtPtrExt(0) + commitCount).value
   /**
     * Enqueue at dispatch
     *
@@ -280,9 +280,8 @@ class StoreQueue(implicit p: Parameters) extends XSModule
       vaddrModule.io.wen(i) := true.B
 
       gpaddrModule.io.waddr(i) := stWbIndex
-      gpaddrModule.io.wdata(i) := io.storeAddrIn(i).bits.gpaddr
-      gpaddrModule.io.wmask(i)  := io.storeAddrIn(i).bits.mask
-      gpaddrModule.io.wlineflag(i) := io.storeAddrIn(i).bits.wlineflag
+      gpaddrModule.io.wdata(i) := io.storeIn(i).bits.gpaddr
+      gpaddrModule.io.wlineflag(i) := io.storeIn(i).bits.wlineflag
       gpaddrModule.io.wen(i) := true.B
 
       debug_paddr(paddrModule.io.waddr(i)) := paddrModule.io.wdata(i)
@@ -393,9 +392,9 @@ class StoreQueue(implicit p: Parameters) extends XSModule
 
     vaddrModule.io.forwardMdata(i) := io.forward(i).vaddr
     paddrModule.io.forwardMdata(i) := io.forward(i).paddr
-    paddrModule.io.forwardDataMask(i) := io.forward(i).mask
+    // paddrModule.io.forwardDataMask(i) := io.forward(i).mask
     gpaddrModule.io.forwardMdata(i) := io.forward(i).gpaddr
-    gpaddrModule.io.forwardDataMask(i) := io.forward(i).mask
+    // gpaddrModule.io.forwardDataMask(i) := io.forward(i).mask
 
     // vaddr cam result does not equal to paddr cam result
     // replay needed
@@ -639,8 +638,8 @@ class StoreQueue(implicit p: Parameters) extends XSModule
   }
 
   // Read vaddr for mem exception
-  io.exceptionAddr.vaddr := vaddrModule.io.rdata(EnsbufferWidth)
-  io.exceptionAddr.gpaddr := gpaddrModule.io.rdata(EnsbufferWidth)
+  io.exceptionAddr.vaddr := vaddrModule.io.rdata(StorePipelineWidth)
+  io.exceptionAddr.gpaddr := gpaddrModule.io.rdata(StorePipelineWidth)
   // misprediction recovery / exception redirect
   // invalidate sq term using robIdx
   val needCancel = Wire(Vec(StoreQueueSize, Bool()))
