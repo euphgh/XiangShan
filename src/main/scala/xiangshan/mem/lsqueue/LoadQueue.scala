@@ -130,6 +130,8 @@ class LoadQueue(implicit p: Parameters) extends XSModule
   dataModule.io := DontCare
   val vaddrModule = Module(new SyncDataModuleTemplate(UInt(VAddrBits.W), LoadQueueSize, numRead = LoadPipelineWidth + 1, numWrite = LoadPipelineWidth, "LqVaddr"))
   vaddrModule.io := DontCare
+  val gpaddrModule = Module(new SyncDataModuleTemplate(UInt(GPAddrBits.W), LoadQueueSize, numRead = LoadPipelineWidth + 1, numWrite = LoadPipelineWidth, "LqGPaddr"))
+  gpaddrModule.io := DontCare
   val vaddrTriggerResultModule = Module(new SyncDataModuleTemplate(Vec(TriggerNum, Bool()), LoadQueueSize, numRead = LoadPipelineWidth, numWrite = LoadPipelineWidth, "LqTrigger"))
   vaddrTriggerResultModule.io := DontCare
   val allocated = RegInit(VecInit(List.fill(LoadQueueSize)(false.B))) // lq entry has been allocated
@@ -326,6 +328,9 @@ class LoadQueue(implicit p: Parameters) extends XSModule
     vaddrModule.io.waddr(i) := RegNext(loadWbIndex)
     vaddrModule.io.wdata(i) := RegNext(io.loadIn(i).bits.vaddr)
     vaddrModule.io.wen(i) := RegNext(io.loadIn(i).fire())
+    gpaddrModule.io.waddr(i) := RegNext(loadWbIndex)
+    gpaddrModule.io.wdata(i) := RegNext(io.loadIn(i).bits.gpaddr)
+    gpaddrModule.io.wen(i) := RegNext(io.loadIn(i).fire())
   }
 
   when(io.dcache.valid) {
@@ -879,11 +884,14 @@ class LoadQueue(implicit p: Parameters) extends XSModule
   // Read vaddr for mem exception
   // no inst will be commited 1 cycle before tval update
   vaddrModule.io.raddr(0) := (deqPtrExt + commitCount).value
+  gpaddrModule.io.raddr(0) := (deqPtrExt + commitCount).value
   io.exceptionAddr.vaddr := vaddrModule.io.rdata(0)
+  io.exceptionAddr.gpaddr := gpaddrModule.io.rdata(0)
 
   // Read vaddr for debug
   (0 until LoadPipelineWidth).map(i => {
     vaddrModule.io.raddr(i+1) := loadWbSel(i)
+    gpaddrModule.io.raddr(i+1) := loadWbSel(i)
   })
 
   (0 until LoadPipelineWidth).map(i => {

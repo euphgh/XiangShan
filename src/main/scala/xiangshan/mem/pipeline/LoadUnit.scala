@@ -109,6 +109,7 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
   io.dtlbReq.bits.memidx.is_ld := true.B
   io.dtlbReq.bits.memidx.is_st := false.B
   io.dtlbReq.bits.memidx.idx := s0_uop.lqIdx.value
+  io.dtlbReq.bits.no_translate := false.B
   io.dtlbReq.bits.debug.pc := s0_uop.cf.pc
   io.dtlbReq.bits.debug.robIdx := s0_uop.robIdx
   io.dtlbReq.bits.debug.isFirstIssue := io.isFirstIssue

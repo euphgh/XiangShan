@@ -210,6 +210,10 @@ class MemBlockImp(outer: MemBlock) extends LazyModuleImp(outer)
   val dtlb_pmps = dtlb.flatMap(_.pmp)
   dtlb.zip(sfence_dup.take(2)).foreach{ case (d,s) => d.sfence := s }
   dtlb.zip(tlbcsr_dup.take(2)).foreach{ case (d,c) => d.csr := c }
+  dtlb.foreach(t => {
+    t.hartId := io.hartId
+    t.flushPipe.foreach(_ := false.B)
+  })
   if (refillBothTlb) {
     require(ldtlbParams.outReplace == sttlbParams.outReplace)
     require(ldtlbParams.outReplace)

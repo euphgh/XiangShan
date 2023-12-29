@@ -538,7 +538,6 @@ class CustomCSRCtrlIO(implicit p: Parameters) extends XSBundle {
   val singlestep = Output(Bool())
   val frontend_trigger = new FrontendTdataDistributeIO()
   val mem_trigger = new MemTdataDistributeIO()
-  val trigger_enable = Output(Vec(10, Bool()))
   // Virtualization Mode
   val virtMode = Output(Bool())
 }

@@ -44,7 +44,7 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
     val hartId = Input(UInt(8.W))
     val reset_vector = Input(UInt(PAddrBits.W))
     val fencei = Input(Bool())
-    val ptw = new TlbPtwIO(6)
+    val ptw = new TlbPtwIO()
     val backend = new FrontendToCtrlIO
     val sfence = Input(new SfenceBundle)
     val tlbCsr = Input(new TlbCsrBundle)
@@ -102,13 +102,13 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
   // tlb_req_arb.io.in(0) <> ifu.io.iTLBInter.req
   // tlb_req_arb.io.in(1) <> icache.io.itlb(1).req
 
-  val itlb_requestors = Wire(Vec(6, new TlbRequestIO))
-  itlb_requestors(0) <> icache.io.itlb(0)
-  itlb_requestors(1) <> icache.io.itlb(1)
-  itlb_requestors(2) <> icache.io.itlb(2)
-  itlb_requestors(3) <> icache.io.itlb(3)
-  itlb_requestors(4) <> icache.io.itlb(4)
-  itlb_requestors(5) <> ifu.io.iTLBInter
+  // val itlb_requestors = Wire(Vec(6, new TlbRequestIO))
+  // itlb_requestors(0) <> icache.io.itlb(0)
+  // itlb_requestors(1) <> icache.io.itlb(1)
+  // itlb_requestors(2) <> icache.io.itlb(2)
+  // itlb_requestors(3) <> icache.io.itlb(3)
+  // itlb_requestors(4) <> icache.io.itlb(4)
+  // itlb_requestors(5) <> ifu.io.iTLBInter
 
   // itlb_requestors(1).req <>  tlb_req_arb.io.out
 

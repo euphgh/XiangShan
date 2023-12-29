@@ -529,12 +529,15 @@ class NewIFU(implicit p: Parameters) extends XSModule
   io.iTLBInter.req.valid         := (mmio_state === m_sendTLB) && f3_req_is_mmio
   io.iTLBInter.req.bits.size     := 3.U
   io.iTLBInter.req.bits.vaddr    := f3_resend_vaddr
+  io.iTLBInter.req.bits.debug    := DontCare
   io.iTLBInter.req.bits.debug.pc := f3_resend_vaddr
   io.iTLBInter.req.bits.hyperinst:= DontCare
   io.iTLBInter.req.bits.hlvx     := DontCare
-
-  io.iTLBInter.req.bits.cmd                 := TlbCmd.exec
-  io.iTLBInter.req.bits.debug.isFirstIssue  := DontCare
+  io.iTLBInter.req.bits.memidx   := DontCare
+  io.iTLBInter.req.bits.kill     := false.B
+  io.iTLBInter.req_kill          := false.B
+  io.iTLBInter.req.bits.cmd      := TlbCmd.exec
+  io.iTLBInter.req.bits.no_translate    := false.B
 
   io.pmp.req.valid := (mmio_state === m_sendPMP) && f3_req_is_mmio
   io.pmp.req.bits.addr  := mmio_resend_addr

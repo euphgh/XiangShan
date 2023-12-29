@@ -134,10 +134,6 @@ class PTWFilterIO(Width: Int, hasHint: Boolean = false)(implicit p: Parameters) 
   val tlb = Flipped(new VectorTlbPtwIO(Width))
   val ptw = new TlbPtwIO()
   val hint = if (hasHint) Some(new TlbHintIO) else None
-  val rob_head_miss_in_tlb = Output(Bool())
-  val debugTopDown = new Bundle {
-    val robHeadVaddr = Flipped(Valid(UInt(VAddrBits.W)))
-  }
 
   def apply(tlb: VectorTlbPtwIO, ptw: TlbPtwIO, sfence: SfenceBundle, csr: TlbCsrBundle): Unit = {
     this.tlb <> tlb
@@ -189,9 +185,15 @@ class PTWFilterEntry(Width: Int, Size: Int, hasHint: Boolean = false)(implicit p
 
   val entryIsMatchVec = WireInit(VecInit(Seq.fill(Width)(false.B)))
   val entryMatchIndexVec = WireInit(VecInit(Seq.fill(Width)(0.U(log2Up(Size).W))))
-  val ptwResp_EntryMatchVec = vpn.zip(v).zip(s2xlate).map{ case ((pi, vi), s2xlatei) => vi && s2xlatei === io.ptw.resp.bits.s2xlate && io.ptw.resp.bits.hit(pi, io.csr.satp.asid, io.csr.vsatp.asid, io.csr.hgatp.asid, true, true)}
+  val ptwResp_EntryMatchVec = vpn.zip(v).zip(s2xlate).map{ 
+    case ((pi, vi), s2xlatei) => vi && s2xlatei === io.ptw.resp.bits.s2xlate && 
+    io.ptw.resp.bits.hit(pi, io.csr.satp.asid, io.csr.vsatp.asid, io.csr.hgatp.asid, true, true)
+  }
   val ptwResp_EntryMatchFirst = firstValidIndex(ptwResp_EntryMatchVec, true.B)
-  val ptwResp_ReqMatchVec = io.tlb.req.map(a => io.ptw.resp.valid && a.bits.s2xlate === io.ptw.resp.bits.s2xlate && io.ptw.resp.bits.hit(a.bits.vpn, 0.U, 0.U, io.csr.hgatp.asid, allType = true, true))
+  val ptwResp_ReqMatchVec = io.tlb.req.map(a => io.ptw.resp.valid && 
+    a.bits.s2xlate === io.ptw.resp.bits.s2xlate && 
+    io.ptw.resp.bits.hit(a.bits.vpn, 0.U, 0.U, io.csr.hgatp.asid, allType = true, true)
+  )
 
   io.refill := Cat(ptwResp_EntryMatchVec).orR && io.ptw.resp.fire
   io.ptw.resp.ready := true.B
@@ -287,11 +289,6 @@ class PTWFilterEntry(Width: Int, Size: Int, hasHint: Boolean = false)(implicit p
     hintIO.resp.bits.replay_all := PopCount(ptwResp_EntryMatchVec) > 1.U
   }
 
-  io.rob_head_miss_in_tlb := VecInit(v.zip(vpn).map{case (vi, vpni) => {
-    vi && io.debugTopDown.robHeadVaddr.valid && vpni === get_pn(io.debugTopDown.robHeadVaddr.bits)
-  }}).asUInt.orR
-
-
   // Perf Counter
   val counter = PopCount(v)
   val inflight_counter = RegInit(0.U(log2Up(Size).W))
@@ -362,7 +359,6 @@ class PTWNewFilter(Width: Int, Size: Int, FenceDelay: Int)(implicit p: Parameter
   filter.map(_.flush := flush)
   filter.map(_.sfence := io.sfence)
   filter.map(_.csr := io.csr)
-  filter.map(_.debugTopDown.robHeadVaddr := io.debugTopDown.robHeadVaddr)
 
   io.tlb.req.map(_.ready := true.B)
   io.tlb.resp.valid := ptwResp_valid
@@ -412,8 +408,6 @@ class PTWNewFilter(Width: Int, Size: Int, FenceDelay: Int)(implicit p: Parameter
   io.ptw.req(0).bits.vpn := ptw_arb.io.out.bits.vpn
   io.ptw.req(0).bits.s2xlate := ptw_arb.io.out.bits.s2xlate
   io.ptw.resp.ready := true.B
-
-  io.rob_head_miss_in_tlb := Cat(filter.map(_.rob_head_miss_in_tlb)).orR
 }
 
 class PTWFilter(Width: Int, Size: Int, FenceDelay: Int)(implicit p: Parameters) extends XSModule with HasPtwConst {
@@ -599,11 +593,6 @@ class PTWFilter(Width: Int, Size: Int, FenceDelay: Int)(implicit p: Parameters) 
     counter := 0.U
     inflight_counter := 0.U
   }
-
-  val robHeadVaddr = io.debugTopDown.robHeadVaddr
-  io.rob_head_miss_in_tlb := VecInit(v.zip(vpn).map{case (vi, vpni) => {
-    vi && robHeadVaddr.valid && vpni === get_pn(robHeadVaddr.bits)
-  }}).asUInt.orR
 
   // perf
   XSPerfAccumulate("tlb_req_count", PopCount(Cat(io.tlb.req.map(_.valid))))

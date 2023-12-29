@@ -102,15 +102,17 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
   toITLB.valid         := p0_valid
   toITLB.bits.size     := 3.U // TODO: fix the size
   toITLB.bits.vaddr    := p0_vaddr
+  toITLB.bits.debug    := DontCare
   toITLB.bits.debug.pc := p0_vaddr
 
   toITLB.bits.cmd                 := TlbCmd.exec
-  toITLB.bits.debug.isFirstIssue  := DontCare
 
   toITLB.bits.memidx              := DontCare
   toITLB.bits.no_translate        := false.B
   toITLB.bits.hyperinst := DontCare
   toITLB.bits.hlvx := DontCare
+  toITLB.bits.kill := false.B
+  io.iTLBInter.req_kill := false.B
 
   fromITLB.ready := true.B
 

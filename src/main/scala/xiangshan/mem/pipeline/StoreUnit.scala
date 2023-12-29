@@ -64,8 +64,8 @@ class StoreUnit_S0(implicit p: Parameters) extends XSModule {
   io.dtlbReq.bits.hyperinst    := LSUOpType.isHsv(uop.ctrl.fuOpType)
   io.dtlbReq.bits.hlvx         := false.B
   
-  // Dcache access here: not **real** dcache write
-  // just read meta and tag in dcache, to find out the store will hit or miss
+  io.out.bits := DontCare
+  io.out.bits.vaddr := saddr
 
   // Now data use its own io
   // io.out.bits.data := genWdata(io.in.bits.src(1), io.in.bits.uop.ctrl.fuOpType(1,0))
