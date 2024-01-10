@@ -17,7 +17,7 @@
 package top
 
 import chisel3._
-import chipsalliance.rocketchip.config
+import org.chipsalliance.cde.config
 import device._
 import freechips.rocketchip.amba.axi4.{AXI4EdgeParameters, AXI4MasterNode, AXI4Xbar}
 import freechips.rocketchip.diplomacy.{AddressSet, InModuleBody, LazyModule, LazyModuleImp}
@@ -28,7 +28,7 @@ class SimMMIO(edge: AXI4EdgeParameters)(implicit p: config.Parameters) extends L
   val node = AXI4MasterNode(List(edge.master))
 
   val flash = LazyModule(new AXI4Flash(Seq(AddressSet(0x10000000L, 0xfffffff))))
-  val uart = LazyModule(new AXI4UART(Seq(AddressSet(0x30000000L, 0xf))))
+  val uart = LazyModule(new AXI4UART(Seq(AddressSet(0x40600000L, 0xf))))
   // val vga = LazyModule(new AXI4VGA(
   //   sim = false,
   //   fbAddress = Seq(AddressSet(0x50000000L, 0x3fffffL)),
@@ -51,7 +51,7 @@ class SimMMIO(edge: AXI4EdgeParameters)(implicit p: config.Parameters) extends L
     node.makeIOs()
   }
 
-  lazy val module = new LazyModuleImp(this){
+  class SimMMIOImp(wrapper: LazyModule) extends LazyModuleImp(wrapper) {
     val io = IO(new Bundle() {
       val uart = new UARTIO
       val interrupt = new IntrGenIO
@@ -60,4 +60,5 @@ class SimMMIO(edge: AXI4EdgeParameters)(implicit p: config.Parameters) extends L
     io.interrupt <> intrGen.module.io.extra.get
   }
 
+  lazy val module = new SimMMIOImp(this)
 }
