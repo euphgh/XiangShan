@@ -620,6 +620,29 @@ class NewIFU(implicit p: Parameters) extends XSModule
     io.toIbuffer.bits.valid     := f3_lastHalf_mask & f3_instr_valid.asUInt
   }
 
+  /** external predecode for MMIO instruction */
+  when(f3_req_is_mmio){
+    val inst  = Cat(f3_mmio_data(1), f3_mmio_data(0))
+    val currentIsRVC   = isRVC(inst)
+
+    val brType::isCall::isRet::Nil = brInfo(inst)
+    val jalOffset = jal_offset(inst, currentIsRVC)
+    val brOffset  = br_offset(inst, currentIsRVC)
+
+    io.toIbuffer.bits.instrs (0) := new RVCDecoder(inst, XLEN).decode.bits
+
+    io.toIbuffer.bits.pd(0).valid   := true.B
+    io.toIbuffer.bits.pd(0).isRVC   := currentIsRVC
+    io.toIbuffer.bits.pd(0).brType  := brType
+    io.toIbuffer.bits.pd(0).isCall  := isCall
+    io.toIbuffer.bits.pd(0).isRet   := isRet
+
+    io.toIbuffer.bits.acf(0) := mmio_resend_af
+    io.toIbuffer.bits.ipf(0) := mmio_resend_pf
+    io.toIbuffer.bits.crossPageIPFFix(0) := mmio_resend_pf
+
+    io.toIbuffer.bits.enqEnable   := f3_mmio_range.asUInt
+  }
 
 
   //Write back to Ftq

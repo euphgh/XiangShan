@@ -172,6 +172,70 @@ class CAMTemplate[T <: Data](val gen: T, val set: Int, val readWidth: Int)(impli
   }
 }
 
+class TlbSPMeta(implicit p: Parameters) extends TlbBundle {
+  val tag = UInt(vpnLen.W) // tag is vpn
+  val level = UInt(1.W) // 1 for 2MB, 0 for 1GB
+  val asid = UInt(asidLen.W)
+
+  def hit(vpn: UInt, asid: UInt): Bool = {
+    val a = tag(vpnnLen*3-1, vpnnLen*2) === vpn(vpnnLen*3-1, vpnnLen*2)
+    val b = tag(vpnnLen*2-1, vpnnLen*1) === vpn(vpnnLen*2-1, vpnnLen*1)
+    val asid_hit = this.asid === asid
+
+    XSDebug(Mux(level.asBool, a&b, a), p"Hit superpage: hit:${Mux(level.asBool, a&b, a)} tag:${Hexadecimal(tag)} level:${level} a:${a} b:${b} vpn:${Hexadecimal(vpn)}\n")
+    asid_hit && Mux(level.asBool, a&b, a)
+  }
+
+  def apply(vpn: UInt, asid: UInt, level: UInt) = {
+    this.tag := vpn
+    this.asid := asid
+    this.level := level(0)
+
+    this
+  }
+
+}
+
+class TlbData(superpage: Boolean = false)(implicit p: Parameters) extends TlbBundle {
+  val level = if(superpage) Some(UInt(1.W)) else None // /*2 for 4KB,*/ 1 for 2MB, 0 for 1GB
+  val ppn = UInt(ppnLen.W)
+  val perm = new TlbPermBundle
+
+  def genPPN(vpn: UInt): UInt = {
+    if (superpage) {
+      val insideLevel = level.getOrElse(0.U)
+      Mux(insideLevel.asBool, Cat(ppn(ppn.getWidth-1, vpnnLen*1), vpn(vpnnLen*1-1, 0)),
+                              Cat(ppn(ppn.getWidth-1, vpnnLen*2), vpn(vpnnLen*2-1, 0)))
+    } else {
+      ppn
+    }
+  }
+
+  def apply(ppn: UInt, level: UInt, perm: UInt, pf: Bool, af: Bool) = {
+    this.level.map(_ := level(0))
+    this.ppn := ppn
+    // refill pagetable perm
+    val ptePerm = perm.asTypeOf(new PtePermBundle)
+    this.perm.pf:= pf
+    this.perm.af:= af
+    this.perm.d := ptePerm.d
+    this.perm.a := ptePerm.a
+    this.perm.g := ptePerm.g
+    this.perm.u := ptePerm.u
+    this.perm.x := ptePerm.x
+    this.perm.w := ptePerm.w
+    this.perm.r := ptePerm.r
+
+    this
+  }
+
+  override def toPrintable: Printable = {
+    val insideLevel = level.getOrElse(0.U)
+    p"level:${insideLevel} ppn:${Hexadecimal(ppn)} perm:${perm}"
+  }
+
+}
+
 class TlbEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parameters) extends TlbBundle {
   require(pageNormal || pageSuper)
 
@@ -879,7 +943,6 @@ class PtwEntry(tagLen: Int, hasPerm: Boolean = false, hasLevel: Boolean = false)
     e.refill(vpn, asid, pte, level, prefetch, valid)
     e
   }
-
 
 
   override def toPrintable: Printable = {

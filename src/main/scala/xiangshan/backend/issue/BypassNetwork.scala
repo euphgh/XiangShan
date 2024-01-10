@@ -27,6 +27,7 @@ import utility._
 class BypassInfo(numWays: Int, dataBits: Int) extends Bundle {
   val valid = Vec(numWays, Bool())
   val data = UInt(dataBits.W)
+
 }
 
 class BypassNetworkIO(numWays: Int, numBypass: Int, dataBits: Int) extends Bundle {
@@ -34,6 +35,7 @@ class BypassNetworkIO(numWays: Int, numBypass: Int, dataBits: Int) extends Bundl
   val source = Vec(numWays, Input(UInt(dataBits.W)))
   val target = Vec(numWays, Output(UInt(dataBits.W)))
   val bypass = Vec(numBypass, Input(new BypassInfo(numWays, dataBits)))
+
 }
 
 class BypassNetwork(numWays: Int, numBypass: Int, dataBits: Int)(implicit p: Parameters)

@@ -35,6 +35,9 @@ class SimTop(implicit p: Parameters) extends Module {
 
   val l_soc = LazyModule(new XSTop())
   val soc = Module(l_soc.module)
+  // Don't allow the top-level signals to be optimized out,
+  // so that we can re-use this SimTop for any generated Verilog RTL.
+  dontTouch(soc.io)
 
   l_soc.module.dma <> 0.U.asTypeOf(l_soc.module.dma)
 
@@ -102,20 +105,12 @@ class SimTop(implicit p: Parameters) extends Module {
 object SimTop extends App {
   override def main(args: Array[String]): Unit = {
     // Keep this the same as TopMain except that SimTop is used here instead of XSTop
-    val (config, firrtlOpts) = ArgParser.parse(args)
-
-    // tools: init to close dpi-c when in fpga
-    val envInFPGA = config(DebugOptionsKey).FPGAPlatform
-    val enableChiselDB = config(DebugOptionsKey).EnableChiselDB
-    val enableConstantin = config(DebugOptionsKey).EnableConstantin
-    Constantin.init(enableConstantin && !envInFPGA)
-    ChiselDB.init(enableChiselDB && !envInFPGA)
-
-    XiangShanStage.execute(firrtlOpts, Seq(
-      ChiselGeneratorAnnotation(() => {
-        DisableMonitors(p => new SimTop()(p))(config)
-      })
-    ))
+    val (config, firrtlOpts, firrtlComplier) = ArgParser.parse(args)
+    Generator.execute(
+      firrtlOpts,
+      DisableMonitors(p => new SimTop()(p))(config),
+      firrtlComplier
+    )
     ElaborationArtefacts.files.foreach{ case (extension, contents) =>
       writeOutputFile("./build", s"XSTop.${extension}", contents())
     }
