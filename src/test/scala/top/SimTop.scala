@@ -21,7 +21,7 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import chisel3._
 import device.{AXI4RAMWrapper, SimJTAG}
 import freechips.rocketchip.diplomacy.{DisableMonitors, LazyModule, LazyModuleImp}
-import utility.GTimer
+import utility._
 import xiangshan.{DebugOptions, DebugOptionsKey}
 import chipsalliance.rocketchip.config._
 import freechips.rocketchip.devices.debug._
@@ -95,12 +95,22 @@ class SimTop(implicit p: Parameters) extends Module {
   // Check and dispaly all source and sink connections
   ExcitingUtils.fixConnections()
   ExcitingUtils.checkAndDisplay()
+
+  DifftestModule.finish("XiangShan")
 }
 
 object SimTop extends App {
   override def main(args: Array[String]): Unit = {
     // Keep this the same as TopMain except that SimTop is used here instead of XSTop
     val (config, firrtlOpts) = ArgParser.parse(args)
+
+    // tools: init to close dpi-c when in fpga
+    val envInFPGA = config(DebugOptionsKey).FPGAPlatform
+    val enableChiselDB = config(DebugOptionsKey).EnableChiselDB
+    val enableConstantin = config(DebugOptionsKey).EnableConstantin
+    Constantin.init(enableConstantin && !envInFPGA)
+    ChiselDB.init(enableChiselDB && !envInFPGA)
+
     XiangShanStage.execute(firrtlOpts, Seq(
       ChiselGeneratorAnnotation(() => {
         DisableMonitors(p => new SimTop()(p))(config)

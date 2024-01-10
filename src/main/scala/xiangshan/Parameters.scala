@@ -272,6 +272,8 @@ case class DebugOptions
   AlwaysBasicDiff: Boolean = true,
   EnableDebug: Boolean = false,
   EnablePerfDebug: Boolean = true,
+  EnableConstantin: Boolean = false,
+  EnableChiselDB: Boolean = false,
   UseDRAMSim: Boolean = false
 )
 
