@@ -218,7 +218,7 @@ class PredictorIO(implicit p: Parameters) extends XSBundle {
   val ctrl = Input(new BPUCtrl)
 }
 
-@chiselName
+
 class Predictor(implicit p: Parameters) extends XSModule with HasBPUConst with HasPerfEvents with HasCircularQueuePtrHelper {
   val io = IO(new PredictorIO)
 
@@ -650,7 +650,7 @@ class Predictor(implicit p: Parameters) extends XSModule with HasBPUConst with H
   val shift_dup = redirect_dup.map(_.cfiUpdate.shift)
   val addIntoHist_dup = redirect_dup.map(_.cfiUpdate.addIntoHist)
   // TODO: remove these below
-  val shouldShiftVec_dup = shift_dup.map(shift => Mux(shift === 0.U, VecInit(0.U((1 << (log2Ceil(numBr) + 1)).W).asBools), VecInit((LowerMask(1.U << (shift-1.U))).asBools())))
+  val shouldShiftVec_dup = shift_dup.map(shift => Mux(shift === 0.U, VecInit(0.U((1 << (log2Ceil(numBr) + 1)).W).asBools), VecInit((LowerMask(1.U << (shift-1.U))).asBools)))
   // TODO end
   val afhob_dup = redirect_dup.map(_.cfiUpdate.afhob)
   val lastBrNumOH_dup = redirect_dup.map(_.cfiUpdate.lastBrNumOH)

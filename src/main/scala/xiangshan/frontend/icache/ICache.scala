@@ -158,10 +158,10 @@ class ICacheMetaArray()(implicit p: Parameters) extends ICacheArray
   val port_1_read_1  = io.read.valid &&  io.read.bits.vSetIdx(1)(0) && io.read.bits.isDoubleLine
   val port_1_read_0  = io.read.valid && !io.read.bits.vSetIdx(1)(0) && io.read.bits.isDoubleLine
 
-  val port_0_read_0_reg = RegEnable(next = port_0_read_0, enable = io.read.fire())
-  val port_0_read_1_reg = RegEnable(next = port_0_read_1, enable = io.read.fire())
-  val port_1_read_1_reg = RegEnable(next = port_1_read_1, enable = io.read.fire())
-  val port_1_read_0_reg = RegEnable(next = port_1_read_0, enable = io.read.fire())
+  val port_0_read_0_reg = RegEnable(next = port_0_read_0, enable = io.read.fire)
+  val port_0_read_1_reg = RegEnable(next = port_0_read_1, enable = io.read.fire)
+  val port_1_read_1_reg = RegEnable(next = port_1_read_1, enable = io.read.fire)
+  val port_1_read_0_reg = RegEnable(next = port_1_read_0, enable = io.read.fire)
 
   val bank_0_idx = Mux(port_0_read_0, io.read.bits.vSetIdx(0), io.read.bits.vSetIdx(1))
   val bank_1_idx = Mux(port_0_read_1, io.read.bits.vSetIdx(0), io.read.bits.vSetIdx(1))
@@ -325,10 +325,10 @@ class ICacheDataArray(implicit p: Parameters) extends ICacheArray
 
   val write_data_bits = Wire(UInt(blockBits.W))
 
-  val port_0_read_0_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_0_read_0, enable = io.read.fire())
-  val port_0_read_1_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_0_read_1, enable = io.read.fire())
-  val port_1_read_1_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_1_read_1, enable = io.read.fire())
-  val port_1_read_0_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_1_read_0, enable = io.read.fire())
+  val port_0_read_0_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_0_read_0, enable = io.read.fire)
+  val port_0_read_1_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_0_read_1, enable = io.read.fire)
+  val port_1_read_1_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_1_read_1, enable = io.read.fire)
+  val port_1_read_0_reg = RegEnable(next = io.read.valid && io.read.bits.head.port_1_read_0, enable = io.read.fire)
 
   //val bank_0_idx_vec = io.read.bits.map(copy =>  Mux(io.read.bits.dup_valids && copy.port_0_read_0, copy.vSetIdx(0), copy.vSetIdx(1)))
   //val bank_1_idx_vec = io.read.bits.map(copy =>  Mux(io.read.valid && copy.port_0_read_1, copy.vSetIdx(0), copy.vSetIdx(1)))
@@ -419,7 +419,7 @@ class ICacheDataArray(implicit p: Parameters) extends ICacheArray
           else      port.valid     :=  io.cache_req_dup(w).bits.bank_num(0)
           port.bits.ridx := io.cache_req_dup(w).bits.index(highestIdxBit,1)
         }
-        cacheOpShouldResp := dataArrays.head.io.read.req.map(_.fire()).reduce(_||_)
+        cacheOpShouldResp := dataArrays.head.io.read.req.map(_.fire).reduce(_||_)
         dataresp :=Mux(io.cache_req_dup(w).bits.bank_num(0).asBool,  read_datas(1),  read_datas(0))
       }
       when(CacheInstrucion.isWriteData(io.cache_req_dup(w).bits.opCode)){
@@ -573,7 +573,7 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
   // mainPipe.io.itlb(0).resp  <>  io.itlb(0).resp
   // prefetchPipe.io.iTLBInter.resp  <>  io.itlb(0).resp
 
-  // when(mainPipe.io.itlb(0).req.fire() && prefetchPipe.io.iTLBInter.req.fire())
+  // when(mainPipe.io.itlb(0).req.fire && prefetchPipe.io.iTLBInter.req.fire)
   // {
   //   assert(false.B, "Both mainPipe ITLB and prefetchPipe ITLB fire!")
   // }
@@ -678,7 +678,7 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
   } .elsewhen (bus.d.bits.opcode === TLMessages.ReleaseAck) {
     releaseUnit.io.mem_grant <> bus.d
   } .otherwise {
-    assert (!bus.d.fire())
+    assert (!bus.d.fire)
   }
 
   val perfEvents = Seq(
@@ -755,7 +755,7 @@ class ICachePartWayArray[T <: Data](gen: T, pWay: Int)(implicit p: Parameters) e
 
     if(bank == 0) sramBank.io.w.req.valid := io.write.valid && !io.write.bits.wbankidx
     else sramBank.io.w.req.valid := io.write.valid && io.write.bits.wbankidx
-    sramBank.io.w.req.bits.apply(data=io.write.bits.wdata, setIdx=io.write.bits.widx, waymask=io.write.bits.wmask.asUInt())
+    sramBank.io.w.req.bits.apply(data=io.write.bits.wdata, setIdx=io.write.bits.widx, waymask=io.write.bits.wmask.asUInt)
 
     sramBank
   }

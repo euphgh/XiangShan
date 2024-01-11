@@ -138,8 +138,8 @@ class SRT4DividerDataModule(len: Int) extends Module {
   // Second cycle, state is pre_0
   // calculate lzc and move div* and lzc diff check if no_iter_needed
 
-  aLZC := PriorityEncoder(aNormAbsReg(len - 1, 0).asBools().reverse)
-  dLZC := PriorityEncoder(dNormAbsReg(len - 1, 0).asBools().reverse)
+  aLZC := PriorityEncoder(aNormAbsReg(len - 1, 0).asBools.reverse)
+  dLZC := PriorityEncoder(dNormAbsReg(len - 1, 0).asBools.reverse)
   val aLZCReg = RegEnable(aLZC, state(s_pre_0)) // 7, 0
   val dLZCReg = RegEnable(dLZC, state(s_pre_0))
 
@@ -285,7 +285,7 @@ class SRT4DividerDataModule(len: Int) extends Module {
 
   val r = aNormAbsReg
   val rPd = dNormAbsReg
-  val rIsZero = ~(r.orR())
+  val rIsZero = ~(r.orR)
   val needCorr = (~dIsZero & ~noIterReg) & Mux(rSignReg, ~r(len) & ~rIsZero, r(len)) // when we get pos rem for d<0 or neg rem for d>0
   rPreShifted := Mux(needCorr, rPd, r)
   val rFinal = RegEnable(rightShifted, state(s_post_1))// right shifted remainder. shift by the number of bits divisor is shifted
@@ -429,7 +429,7 @@ class SRT4QDS(len: Int, itn_len: Int) extends Module {
 
 class SRT4Divider(len: Int)(implicit p: Parameters) extends AbstractDivider(len) {
 
-  val newReq = io.in.fire()
+  val newReq = io.in.fire
 
   val uop = io.in.bits.uop
   val uopReg = RegEnable(uop, newReq)

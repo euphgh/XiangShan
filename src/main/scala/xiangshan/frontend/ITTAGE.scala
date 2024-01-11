@@ -142,7 +142,7 @@ class FakeITTageTable()(implicit p: Parameters) extends ITTageModule {
   io.resp := DontCare
 
 }
-@chiselName
+
 class ITTageTable
 (
   val nRows: Int, val histLen: Int, val tagLen: Int, val uBitPeriod: Int, val tableIdx: Int
@@ -352,7 +352,7 @@ class FakeITTage(implicit p: Parameters) extends BaseITTage {
   io.s2_ready := true.B
 }
 // TODO: check target related logics
-@chiselName
+
 class ITTage(implicit p: Parameters) extends BaseITTage {
   override val meta_size = 0.U.asTypeOf(new ITTageMeta).getWidth
 

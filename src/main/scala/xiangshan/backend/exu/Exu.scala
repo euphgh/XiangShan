@@ -221,7 +221,7 @@ abstract class Exu(cfg: ExuConfig)(implicit p: Parameters) extends XSModule {
       s.head._1
     } else {
       if (needArbiter) {
-        Cat(s.map(x => x._1 && x._2)).orR()
+        Cat(s.map(x => x._1 && x._2)).orR
       } else {
         Cat(s.map(x => x._1)).andR()
       }
@@ -229,13 +229,13 @@ abstract class Exu(cfg: ExuConfig)(implicit p: Parameters) extends XSModule {
   }
 
   if (config.readIntRf) {
-    XSPerfAccumulate("from_int_fire", io.fromInt.fire())
+    XSPerfAccumulate("from_int_fire", io.fromInt.fire)
     XSPerfAccumulate("from_int_valid", io.fromInt.valid)
     io.fromInt.ready := !io.fromInt.valid || inReady(readIntFu)
   }
 
   if (config.readFpRf) {
-    XSPerfAccumulate("from_fp_fire", io.fromFp.fire())
+    XSPerfAccumulate("from_fp_fire", io.fromFp.fire)
     XSPerfAccumulate("from_fp_valid", io.fromFp.valid)
     io.fromFp.ready := !io.fromFp.valid || inReady(readFpFu)
   }

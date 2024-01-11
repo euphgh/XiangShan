@@ -403,7 +403,7 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
     val uop = io.out.bits.uop
     val difftest = DifftestModule(new DiffLrScEvent)
     difftest.coreid := io.hartId
-    difftest.valid := io.out.fire() &&
+    difftest.valid := io.out.fire &&
       (uop.ctrl.fuOpType === LSUOpType.sc_d || uop.ctrl.fuOpType === LSUOpType.sc_w)
     difftest.success := is_lrsc_valid
   }

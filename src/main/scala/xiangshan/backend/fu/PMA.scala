@@ -232,7 +232,7 @@ trait PMAMethod extends PMAConst {
   }
 
   def match_mask(paddr: UInt, cfg: PMPConfig) = {
-    val match_mask_addr: UInt = Cat(paddr, cfg.a(0)).asUInt() | (((1 << PlatformGrain) - 1) >> PMPOffBits).U((paddr.getWidth + 1).W)
+    val match_mask_addr: UInt = Cat(paddr, cfg.a(0)).asUInt | (((1 << PlatformGrain) - 1) >> PMPOffBits).U((paddr.getWidth + 1).W)
     Cat(match_mask_addr & ~(match_mask_addr + 1.U), ((1 << PMPOffBits) - 1).U(PMPOffBits.W))
   }
 

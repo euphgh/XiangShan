@@ -32,7 +32,7 @@ class RASEntry()(implicit p: Parameters) extends XSBundle {
     val ctr = UInt(8.W) // layer of nested call functions
 }
 
-@chiselName
+
 class RAS(implicit p: Parameters) extends BasePredictor {
   object RASEntry {
     def apply(retAddr: UInt, ctr: UInt): RASEntry = {
@@ -43,7 +43,7 @@ class RAS(implicit p: Parameters) extends BasePredictor {
     }
   }
 
-  @chiselName
+  
   class RASStack(val rasSize: Int) extends XSModule {
     val io = IO(new Bundle {
       val push_valid = Input(Bool())

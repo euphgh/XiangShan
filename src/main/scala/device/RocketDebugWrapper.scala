@@ -141,7 +141,7 @@ class SimJTAG(tickDelay: Int = 50)(implicit val p: Parameters) extends ExtModule
     tbsuccess := exit === 1.U
     when (exit >= 2.U) {
       printf("*** FAILED *** (exit code = %d)\n", exit >> 1.U)
-      stop(1)
+      stop()
     }
   }
 }

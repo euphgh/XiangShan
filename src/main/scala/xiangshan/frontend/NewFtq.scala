@@ -83,7 +83,7 @@ class Ftq_RF_Components(implicit p: Parameters) extends XSBundle with BPUUtils w
     this.startAddr := resp.pc(dupForFtq)
     this.nextLineAddr := resp.pc(dupForFtq) + (FetchWidth * 4 * 2).U // may be broken on other configs
     this.isNextMask := VecInit((0 until PredictWidth).map(i =>
-      (resp.pc(dupForFtq)(log2Ceil(PredictWidth), 1) +& i.U)(log2Ceil(PredictWidth)).asBool()
+      (resp.pc(dupForFtq)(log2Ceil(PredictWidth), 1) +& i.U)(log2Ceil(PredictWidth)).asBool
     ))
     this.fallThruError := resp.fallThruError(dupForFtq)
     this
@@ -500,8 +500,8 @@ class Ftq(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHelpe
   val bpu_s3_redirect = bpu_s3_resp.valid(dupForFtq) && bpu_s3_resp.hasRedirect(dupForFtq)
 
   io.toBpu.enq_ptr := bpuPtr
-  val enq_fire = io.fromBpu.resp.fire() && allowBpuIn // from bpu s1
-  val bpu_in_fire = (io.fromBpu.resp.fire() || bpu_s2_redirect || bpu_s3_redirect) && allowBpuIn
+  val enq_fire = io.fromBpu.resp.fire && allowBpuIn // from bpu s1
+  val bpu_in_fire = (io.fromBpu.resp.fire || bpu_s2_redirect || bpu_s3_redirect) && allowBpuIn
 
   val bpu_in_resp = io.fromBpu.resp.bits.selectedRespForFtq
   val bpu_in_stage = io.fromBpu.resp.bits.selectedRespIdxForFtq
@@ -1129,7 +1129,7 @@ class Ftq(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHelpe
     val prefetchPtr = RegInit(FtqPtr(false.B, 0.U))
     val diff_prefetch_addr = WireInit(update_target(prefetchPtr.value)) //TODO: remove this
 
-    prefetchPtr := prefetchPtr + io.toPrefetch.req.fire()
+    prefetchPtr := prefetchPtr + io.toPrefetch.req.fire
 
     ftq_pc_mem.io.other_raddrs(0) := prefetchPtr.value
 

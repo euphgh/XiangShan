@@ -49,7 +49,7 @@ class L2TlbPrefetch(implicit p: Parameters) extends XSModule with HasPtwConst {
   val next_line = get_next_line(io.in.bits.vpn)
   val next_req = RegEnable(next_line, io.in.valid)
   val input_valid = io.in.valid && !flush && !already_have(next_line)
-  val v = ValidHold(input_valid, io.out.fire(), flush)
+  val v = ValidHold(input_valid, io.out.fire, flush)
   val s2xlate = Wire(UInt(2.W))
   s2xlate := MuxCase(noS2xlate, Seq(
     (io.csr.priv.virt && io.csr.vsatp.mode =/= 0.U && io.csr.hgatp.mode =/= 0.U) -> allStage,
@@ -72,5 +72,5 @@ class L2TlbPrefetch(implicit p: Parameters) extends XSModule with HasPtwConst {
   }
 
   XSPerfAccumulate("l2tlb_prefetch_input_count", input_valid)
-  XSPerfAccumulate("l2tlb_prefetch_output_count", io.out.fire())
+  XSPerfAccumulate("l2tlb_prefetch_output_count", io.out.fire)
 }

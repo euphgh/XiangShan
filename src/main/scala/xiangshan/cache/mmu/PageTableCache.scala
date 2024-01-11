@@ -19,7 +19,7 @@ package xiangshan.cache.mmu
 import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
-import chisel3.internal.naming.chiselName
+
 import xiangshan._
 import xiangshan.cache.{HasDCacheParameters, MemoryOpConstants}
 import utils._
@@ -139,7 +139,7 @@ class PtwCacheIO()(implicit p: Parameters) extends MMUIOBaseBundle with HasPtwCo
   val csr_dup = Vec(3, Input(new TlbCsrBundle()))
 }
 
-@chiselName
+
 class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with HasPerfEvents {
   val io = IO(new PtwCacheIO)
   val ecc = Code.fromString(l2tlbParams.ecc)
