@@ -28,7 +28,6 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util.{BundleFieldBase, UIntToOH1}
 import device.RAMHelper
 import huancun.{AliasField, AliasKey, DirtyField, PreferCacheField, PrefetchField}
-import huancun.utils.FastArbiter
 import mem.{AddPipelineReg}
 
 import scala.math.max
@@ -891,7 +890,7 @@ class DCacheWrapper()(implicit p: Parameters) extends LazyModule with HasXSParam
     clientNode := dcache.clientNode
   }
 
-  lazy val module = new LazyModuleImp(this) with HasPerfEvents {
+  class DCacheWrapperImp(wrapper: LazyModule) extends LazyModuleImp(wrapper) with HasPerfEvents {
     val io = IO(new DCacheIO)
     val perfEvents = if (!useDcache) {
       // a fake dcache which uses dpi-c to access memory, only for debug usage!
@@ -905,4 +904,6 @@ class DCacheWrapper()(implicit p: Parameters) extends LazyModule with HasXSParam
     }
     generatePerfEvent()
   }
+
+  lazy val module = new DCacheWrapperImp(this)
 }

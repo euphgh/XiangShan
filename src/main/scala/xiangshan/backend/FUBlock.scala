@@ -51,7 +51,7 @@ class FUBlock(configs: Seq[(ExuConfig, Int)])(implicit p: Parameters) extends XS
   val numIn = configs.map(_._2).sum
   val numFma = configs.filter(_._1 == FmacExeUnitCfg).map(_._2).sum
 
-  val io = IO(new Bundle {
+  class FUBlockIO extends Bundle {
     val redirect = Flipped(ValidIO(new Redirect))
     // in
     val issue = Vec(numIn, Flipped(DecoupledIO(new ExuInput)))
@@ -60,7 +60,8 @@ class FUBlock(configs: Seq[(ExuConfig, Int)])(implicit p: Parameters) extends XS
     // misc
     val extra = new FUBlockExtraIO(configs)
     val fmaMid = if (numFma > 0) Some(Vec(numFma, new FMAMidResultIO)) else None
-  })
+  }
+  val io = IO(new FUBlockIO)
 
   val exuDefs = configs.map(_._1).map(ExeUnitDef(_))
   val exeUnits = configs.zip(exuDefs).map(x => Seq.fill(x._1._2)(Instance(x._2))).reduce(_ ++ _)

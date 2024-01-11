@@ -26,7 +26,7 @@ import xiangshan.ExceptionNO._
 import xiangshan.backend.rename.RatReadPort
 
 class DecodeStage(implicit p: Parameters) extends XSModule with HasPerfEvents {
-  val io = IO(new Bundle() {
+  class DecodeStageIO extends Bundle {
     // from Ibuffer
     val in = Vec(DecodeWidth, Flipped(DecoupledIO(new CtrlFlow)))
     // to Rename
@@ -38,7 +38,8 @@ class DecodeStage(implicit p: Parameters) extends XSModule with HasPerfEvents {
     val csrCtrl = Input(new CustomCSRCtrlIO)
     // perf only
     val fusion = Vec(DecodeWidth - 1, Input(Bool()))
-  })
+  }
+  val io = IO(new DecodeStageIO)
 
   val decoders = Seq.fill(DecodeWidth)(Module(new DecodeUnit))
 

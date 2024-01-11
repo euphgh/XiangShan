@@ -22,7 +22,6 @@ import chisel3.util._
 import freechips.rocketchip.diplomacy.{BundleBridgeSource, LazyModule, LazyModuleImp}
 import freechips.rocketchip.tile.HasFPUParameters
 import huancun.PrefetchRecv
-import huancun.utils.{RegNextN, ValidIODelay}
 import utils._
 import utility._
 import xiangshan._
@@ -114,7 +113,7 @@ class MemBlockImp(outer: MemBlock) extends LazyModuleImp(outer)
 
   val redirect = RegNextWithEnable(io.redirect)
 
-  val dcache = outer.dcache.module
+  private val dcache = outer.dcache.module
   val uncache = outer.uncache.module
 
   val csrCtrl = DelayN(io.csrCtrl, 2)

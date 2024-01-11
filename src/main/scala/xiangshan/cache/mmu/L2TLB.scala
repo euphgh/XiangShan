@@ -786,7 +786,7 @@ class L2TLBWrapper()(implicit p: Parameters) extends LazyModule with HasXSParame
     node := ptw.node
   }
 
-  lazy val module = new LazyModuleImp(this) with HasPerfEvents {
+  class L2TLBWrapperImp(wrapper: LazyModule) extends LazyModuleImp(wrapper) with HasPerfEvents {
     val io = IO(new L2TLBIO)
     val perfEvents = if (useSoftPTW) {
       val fake_ptw = Module(new FakePTW())
@@ -799,4 +799,6 @@ class L2TLBWrapper()(implicit p: Parameters) extends LazyModule with HasXSParame
     }
     generatePerfEvent()
   }
+
+  lazy val module = new L2TLBWrapperImp(this)
 }

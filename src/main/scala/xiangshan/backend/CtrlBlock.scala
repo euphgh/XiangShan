@@ -131,9 +131,9 @@ class RedirectGenerator(implicit p: Parameters) extends XSModule
   // stage2CfiUpdate.taken := s1_redirect_bits_reg.cfiUpdate.taken
   // stage2CfiUpdate.isMisPred := s1_redirect_bits_reg.cfiUpdate.isMisPred
 
-  val s2_target = RegEnable(target, enable = s1_redirect_valid_reg)
-  val s2_pc = RegEnable(real_pc, enable = s1_redirect_valid_reg)
-  val s2_redirect_bits_reg = RegEnable(s1_redirect_bits_reg, enable = s1_redirect_valid_reg)
+  val s2_target = RegEnable(target, s1_redirect_valid_reg)
+  val s2_pc = RegEnable(real_pc, s1_redirect_valid_reg)
+  val s2_redirect_bits_reg = RegEnable(s1_redirect_bits_reg, s1_redirect_valid_reg)
   val s2_redirect_valid_reg = RegNext(s1_redirect_valid_reg && !io.flush, init = false.B)
 
   io.stage3Redirect.valid := s2_redirect_valid_reg
@@ -241,7 +241,7 @@ class CtrlBlockImp(outer: CtrlBlock)(implicit p: Parameters) extends LazyModuleI
         wb_next.bits.uop.debugInfo.writebackTime := timer
       }
       exuOutput
-    }))
+    }).toSeq)
   }
 
   val decode = Module(new DecodeStage)
@@ -276,7 +276,7 @@ class CtrlBlockImp(outer: CtrlBlock)(implicit p: Parameters) extends LazyModuleI
 
   val flushRedirectReg = Wire(Valid(new Redirect))
   flushRedirectReg.valid := RegNext(flushRedirect.valid, init = false.B)
-  flushRedirectReg.bits := RegEnable(flushRedirect.bits, enable = flushRedirect.valid)
+  flushRedirectReg.bits := RegEnable(flushRedirect.bits, flushRedirect.valid)
 
   val stage2Redirect = Mux(flushRedirect.valid, flushRedirect, redirectGen.io.stage2Redirect)
   // Redirect will be RegNext at ExuBlocks.

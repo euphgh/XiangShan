@@ -35,7 +35,6 @@ import utils._
 import utility._
 
 import scala.math.max
-import Chisel.experimental.chiselName
 import org.chipsalliance.cde.config.Parameters
 import chisel3.util.BitPat.bitPatToUInt
 import xiangshan.backend.exu.ExuConfig

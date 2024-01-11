@@ -49,13 +49,15 @@ class DebugModule(numCores: Int)(implicit p: Parameters) extends LazyModule {
 //    l2xbar := TLBuffer() := TLWidthWidget(1) := sb2tl.node
 //  }
 
-  lazy val module = new LazyRawModuleImp(this) {
-    val io = IO(new Bundle{
-      val resetCtrl = new ResetCtrlIO(numCores)(p)
-      val debugIO = new DebugIO()(p)
-      val clock = Input(Bool())
-      val reset = Input(Reset())
-    })
+  class DebugModuleIO extends Bundle {
+    val resetCtrl = new ResetCtrlIO(numCores)(p)
+    val debugIO = new DebugIO()(p)
+    val clock = Input(Bool())
+    val reset = Input(Reset())
+  }
+
+  class DebugModuleImp(wrapper: LazyModule) extends LazyRawModuleImp(wrapper) {
+    val io = IO(new DebugModuleIO)
     debug.module.io.tl_reset := io.reset // this should be TL reset
     debug.module.io.tl_clock := io.clock.asClock // this should be TL clock
     withClock(io.clock.asClock) {
@@ -93,6 +95,8 @@ class DebugModule(numCores: Int)(implicit p: Parameters) extends LazyModule {
       dtm
     }
   }
+
+  lazy val module = new DebugModuleImp(this)
 }
 
 object XSDebugModuleParams {
