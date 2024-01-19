@@ -223,7 +223,7 @@ abstract class Exu(cfg: ExuConfig)(implicit p: Parameters) extends XSModule {
       if (needArbiter) {
         Cat(s.map(x => x._1 && x._2)).orR
       } else {
-        Cat(s.map(x => x._1)).andR()
+        Cat(s.map(x => x._1)).andR
       }
     }
   }

@@ -21,8 +21,6 @@ import chiseltest._
 import chiseltest.ChiselScalatestTester
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
-import firrtl.stage.RunFirrtlTransformAnnotation
-import xstransforms.PrintModuleName
 
 import xiangshan.backend.fu._
 

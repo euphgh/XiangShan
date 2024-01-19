@@ -22,16 +22,10 @@ import chisel3.util._
 import xiangshan._
 import utils._
 import utility._
-import chisel3.experimental.chiselName
-import chisel3.stage.{ChiselGeneratorAnnotation, ChiselStage}
-import firrtl.stage.RunFirrtlTransformAnnotation
-import firrtl.transforms.RenameModules
-import freechips.rocketchip.transforms.naming.RenameDesiredNames
 
 import scala.math.min
 import scala.util.matching.Regex
 import scala.{Tuple2 => &}
-import firrtl.passes.wiring.Wiring
 
 trait ITTageParams extends HasXSParameter with HasBPUParameter {
 
@@ -379,9 +373,9 @@ class ITTage(implicit p: Parameters) extends BaseITTage {
   val s1_resps = VecInit(tables.map(t => t.io.resp))
   val s2_resps = RegEnable(s1_resps, s1_fire)
 
-  val debug_pc_s1 = RegEnable(s0_pc_dup(dupForIttage), enable=s0_fire)
-  val debug_pc_s2 = RegEnable(debug_pc_s1, enable=s1_fire)
-  val debug_pc_s3 = RegEnable(debug_pc_s2, enable=s2_fire)
+  val debug_pc_s1 = RegEnable(s0_pc_dup(dupForIttage), s0_fire)
+  val debug_pc_s2 = RegEnable(debug_pc_s1, s1_fire)
+  val debug_pc_s3 = RegEnable(debug_pc_s2, s2_fire)
 
   val s2_tageTaken         = Wire(Bool())
   val s2_tageTarget        = Wire(UInt(VAddrBits.W))

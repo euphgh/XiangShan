@@ -89,7 +89,7 @@ object PriorityGen {
           val anotherEqualPrevious = (if (i == 0) false.B else Cat((0 until i).map(l => another.U === sortedIndex(l))).orR)
           // need to be no smaller than any other numbers except the previoud found larger ones
           (numExist(each) <= numExist(another)) || anotherEqualPrevious
-        })).andR()
+        })).andR
         largerThanAnyOther && !equalPrevious
       }))
       priority(sortedIndex(i)) := i.U

@@ -19,7 +19,6 @@ package xiangshan.frontend
 import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.chiselName
 import xiangshan._
 import utils._
 import utility._

@@ -18,7 +18,6 @@ package xiangshan.frontend
 
 import org.chipsalliance.cde.config.Parameters
 import chisel3._
-import chisel3.experimental.chiselName
 import chisel3.util._
 import utils._
 import utility._
@@ -77,7 +76,7 @@ class RAS(implicit p: Parameters) extends BasePredictor {
     
     val top_write_en = WireInit(false.B)
     val top_write = Wire(new RASEntry)
-    val top_dup = RegEnable(dup(top_write), init=dup(RASEntry(0x80000000L.U, 0.U)), top_write_en)
+    val top_dup = RegEnable(dup(top_write), dup(RASEntry(0x80000000L.U, 0.U)), top_write_en)
     top_write := top_dup(0)
     top_dup.foreach(dontTouch(_))
     

@@ -150,7 +150,7 @@ class SRT4DividerDataModule(len: Int) extends Module {
   val lzcDiff = Mux(state(s_pre_0), lzcWireDiff, lzcRegDiff)
   aIsZero := aLZC(lzc_width) // this is state pre_0
   dIsZero := dLZCReg(lzc_width) // this is pre_1 and all stages after
-  val dIsOne = dLZC(lzc_width - 1, 0).andR() // this is pre_0
+  val dIsOne = dLZC(lzc_width - 1, 0).andR // this is pre_0
   val noIterReg = RegEnable(dIsOne & aNormAbsReg(len - 1), state(s_pre_0)) // This means dividend has lzc 0 so iter is 17
   noIter := noIterReg
   val aTooSmallReg = RegEnable(aIsZero | lzcDiff(lzc_width), state(s_pre_0)) // a is zero or a smaller than d

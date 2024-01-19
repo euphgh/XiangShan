@@ -121,7 +121,7 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
   /** Prefetch Stage 1: cache probe filter */
   val p1_valid =  generatePipeControl(lastFire = p0_fire, thisFire = p1_fire || p1_discard, thisFlush = false.B, lastFlush = false.B)
 
-  val p1_vaddr   =  RegEnable(next = p0_vaddr,    enable=p0_fire)
+  val p1_vaddr   =  RegEnable(p0_vaddr,    p0_fire)
 
   //tlb resp
   val tlb_resp_valid = RegInit(false.B)
@@ -176,7 +176,7 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
 
   val p3_pmp_fire = p3_valid
   val pmpExcpAF = fromPMP.instr
-  val p3_paddr = RegEnable(next = p2_paddr,  enable = p2_fire)
+  val p3_paddr = RegEnable(p2_paddr,  p2_fire)
 
   io.pmp.req.valid      := p3_pmp_fire
   io.pmp.req.bits.addr  := p3_paddr
@@ -184,7 +184,7 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
   io.pmp.req.bits.cmd   := TlbCmd.exec
 
   val p3_except_pmp_af = DataHoldBypass(pmpExcpAF, p3_pmp_fire) 
-  val p3_check_in_mshr = RegEnable(next = p2_check_in_mshr,  enable = p2_fire)
+  val p3_check_in_mshr = RegEnable(p2_check_in_mshr,  p2_fire)
   val p3_mmio      = DataHoldBypass(io.pmp.resp.mmio && !p3_except_pmp_af, p3_pmp_fire)
 
   val p3_exception  = VecInit(Seq(p3_except_pmp_af, p3_mmio)).reduce(_||_)

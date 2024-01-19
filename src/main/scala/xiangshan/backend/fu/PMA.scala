@@ -214,7 +214,7 @@ trait PMAMethod extends PMAConst {
     })
     val addr = addr_list.reverse
     val mask = mask_list.reverse
-    (VecInit(cfgInitMerge), VecInit(addr), VecInit(mask))
+    (VecInit(cfgInitMerge), VecInit(addr.toSeq), VecInit(mask.toSeq))
   }
 
   def get_napot(base: BigInt, range: BigInt): BigInt = {
@@ -287,7 +287,7 @@ trait PMACheckMethod extends PMPConst {
     match_vec(num) := true.B
     cfg_vec(num) := pmaDefault
     if (leaveHitMux) {
-      ParallelPriorityMux(match_vec.map(RegEnable(_, init = false.B, valid)), RegEnable(cfg_vec, valid))
+      ParallelPriorityMux(match_vec.map(RegEnable(_, false.B, valid)), RegEnable(cfg_vec, valid))
     } else {
       ParallelPriorityMux(match_vec, cfg_vec)
     }

@@ -143,7 +143,7 @@ class SRT16DividerDataModule(len: Int) extends Module {
   // special case:
   // divisor is 1 or -1; dividend has less bits than divisor; divisor is zero
   // s_pre_0:
-  val dIsOne = dLZC(lzc_width - 1, 0).andR()
+  val dIsOne = dLZC(lzc_width - 1, 0).andR
   val dIsZero = ~dNormReg.orR
   val aIsZero = RegEnable(aLZC(lzc_width), state(s_pre_0))
   val aTooSmall = RegEnable(aLZC(lzc_width) | lzcWireDiff(lzc_width), state(s_pre_0))

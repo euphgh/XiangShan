@@ -43,7 +43,7 @@ class NaiveMultiplier(len: Int, val latency: Int)(implicit p: Parameters)
 
   val (src1, src2) = (io.in.bits.src(0), io.in.bits.src(1))
 
-  val mulRes = src1.asSInt() * src2.asSInt()
+  val mulRes = src1.asSInt * src2.asSInt
 
   var dataVec = Seq(mulRes.asUInt)
   var ctrlVec = Seq(ctrl)

@@ -18,7 +18,6 @@ package xiangshan.cache.mmu
 
 import org.chipsalliance.cde.config.Parameters
 import chisel3._
-import chisel3.experimental.{ExtModule, chiselName}
 import chisel3.util._
 import utils._
 import utility._

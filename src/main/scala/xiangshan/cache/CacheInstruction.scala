@@ -20,7 +20,7 @@ object CacheOpMap{
 }
 
 object CacheRegMap{ 
-  def apply(offset: String,  width: String, authority: String, name: String ): Pair[String, Map[String, String]] = {
+  def apply(offset: String,  width: String, authority: String, name: String ): (String, Map[String, String]) = {
     name -> Map(
       "offset" -> offset,
       "width"  -> width,
