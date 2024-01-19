@@ -229,7 +229,6 @@ class ReservationStationIO(params: RSParams)(implicit p: Parameters) extends XSB
   )) else None
   val checkwait = if (params.checkWaitBit) Some(new Bundle {
     val stIssuePtr = Input(new SqPtr)
-    val stIssue = Flipped(Vec(exuParameters.StuCnt, ValidIO(new ExuInput)))
     val memWaitUpdateReq = Flipped(new MemWaitUpdateReq)
   }) else None
   val load = if (params.isLoad) Some(Vec(params.numDeq, new Bundle {

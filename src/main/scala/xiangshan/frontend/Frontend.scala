@@ -42,7 +42,6 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
 {
   val io = IO(new Bundle() {
     val hartId = Input(UInt(8.W))
-    val reset_vector = Input(UInt(PAddrBits.W))
     val fencei = Input(Bool())
     val ptw = new TlbPtwIO()
     val backend = new FrontendToCtrlIO

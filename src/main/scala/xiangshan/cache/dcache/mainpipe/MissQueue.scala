@@ -28,7 +28,6 @@ import freechips.rocketchip.tilelink.MemoryOpCategories._
 import freechips.rocketchip.tilelink.TLPermissions._
 import difftest._
 import huancun.{AliasKey, DirtyKey, PreferCacheKey, PrefetchKey}
-import huancun.utils.FastArbiter
 import mem.{AddPipelineReg}
 
 class MissReqWoStoreData(implicit p: Parameters) extends DCacheBundle {

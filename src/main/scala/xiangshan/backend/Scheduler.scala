@@ -343,6 +343,8 @@ class SchedulerImp(outer: Scheduler) extends LazyModuleImp(outer) with HasXSPara
     } else None
     if (io.extra.fpStateReadIn.isDefined && numInFpStateRead > 0) {
       io.extra.fpStateReadIn.get <> readFpState.takeRight(numInFpStateRead)
+    } else if (io.extra.fpStateReadIn.isDefined) {
+      io.extra.fpStateReadIn.get <> DontCare
     }
     busyTable
   } else None
@@ -506,11 +508,7 @@ class SchedulerImp(outer: Scheduler) extends LazyModuleImp(outer) with HasXSPara
         }
         else {
           val target = mod.io.srcRegValue(idx)
-          val isFp = RegNext(mod.io.fromDispatch(idx).bits.ctrl.srcType(0) === SrcType.fp)
-          val fromFp = if (numIntRfPorts > 0) isFp else false.B
-          when (fromFp) {
-            target := fpRfPorts.take(target.length)
-          }
+          target := fpRfPorts.take(target.length)
         }
       }
       fpReadPort += numFpRfPorts

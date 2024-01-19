@@ -157,6 +157,7 @@ class FMAMidResult extends FMULToFADD(FPU.ftypes.last.expWidth, FPU.ftypes.last.
     floatMidResult.fp_prod.exp := fp_prod.exp
     floatMidResult.fp_prod.sig := fp_prod.sig
     floatMidResult.inter_flags := inter_flags
+    floatMidResult.rm := rm
     floatMidResult
   }
 

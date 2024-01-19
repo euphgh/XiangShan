@@ -41,6 +41,11 @@ class VerilogModuleGenerator(object):
   def add_decl_reg(self, width, name, depth=1):
     self.add_decl("reg", width, name, depth)
 
+  def add_decl_ram(self, width, name, depth=1):
+    width_str = self.__format_width(width)
+    depth_str = " [{}:0]".format(depth-1)
+    self.decl.append(f"reg {width_str}{name}{depth_str};")
+
   def add_decl_wire(self, width, name, depth=1):
     self.add_decl("wire", width, name, depth)
 
@@ -268,7 +273,7 @@ class SRAM(object):
       mem.add_combinational('  if (%sclk && latch_%sen)' % (prefix, prefix))
       mem.add_combinational('    ram[latch_%saddr] <= latch_%sdata;' % (prefix, prefix))
 
-    mem.add_decl_reg(width, "ram", depth)
+    mem.add_decl_ram(width, "ram", depth)
     mem.add_decl_line('`ifdef RANDOMIZE_MEM_INIT')
     mem.add_decl_line('  integer initvar;')
     mem.add_decl_line('  initial begin')
@@ -301,14 +306,20 @@ class SRAM(object):
       mem.add_sequential('always @(posedge %sclk)' % prefix)
       mem.add_sequential("  if (%sen && %swmode) begin" % (prefix, prefix))
       if mask_seg > 0:
-        mem.add_sequential("    for(i=0;i<%d;i=i+1) begin" % mask_seg)
-        if pid in maskedports:
-          mem.add_sequential("      if(%swmask[i]) begin" % prefix)
-          mem.add_sequential("        ram[%saddr][i*%d +: %d] <= %swdata[i*%d +: %d];" %(prefix, mask_gran, mask_gran, prefix, mask_gran, mask_gran))
-          mem.add_sequential("      end")
+        if mask_gran == 1: # If 1 bit mask, use & instead
+          if pid in maskedports:
+            mem.add_sequential("      ram[%saddr] <= (%swmask & %swdata) | (~%swmask & ram[%saddr]);" %(prefix, prefix, prefix, prefix, prefix))
+          else:
+            mem.add_sequential("      ram[%saddr] <= %swdata;" %(prefix, prefix))
         else:
-          mem.add_sequential("      ram[%saddr][i*%d +: %d] <= %swdata[i*%d +: %d];" %(prefix, mask_gran, mask_gran, prefix, mask_gran, mask_gran))
-        mem.add_sequential("    end")
+          mem.add_sequential("    for (i=0;i<%d;i=i+1) begin" % mask_seg)
+          if pid in maskedports:
+            mem.add_sequential("      if (%swmask[i]) begin" % prefix)
+            mem.add_sequential("        ram[%saddr][i*%d +: %d] <= %swdata[i*%d +: %d];" %(prefix, mask_gran, mask_gran, prefix, mask_gran, mask_gran))
+            mem.add_sequential("      end")
+          else:
+            mem.add_sequential("      ram[%saddr][i*%d +: %d] <= %swdata[i*%d +: %d];" %(prefix, mask_gran, mask_gran, prefix, mask_gran, mask_gran))
+          mem.add_sequential("    end")
       mem.add_sequential("  end")
     return mem.generate(blackbox)
 
