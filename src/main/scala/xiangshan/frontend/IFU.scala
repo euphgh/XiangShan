@@ -466,7 +466,7 @@ class NewIFU(implicit p: Parameters) extends XSModule
     }
 
     is(m_sendTLB){
-      when( io.iTLBInter.req.valid && !io.iTLBInter.resp.bits.miss ){
+      when( io.iTLBInter.req.valid && !io.iTLBInter.resp.valid ){
         mmio_state :=  m_tlbResp
       }
     }

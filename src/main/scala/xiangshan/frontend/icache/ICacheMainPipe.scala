@@ -103,7 +103,7 @@ class ICacheMainPipeInterface(implicit p: Parameters) extends ICacheBundle {
    */
   val fetch       = new ICacheMainPipeBundle
   val pmp         = Vec(PortNumber, new ICachePMPBundle)
-  val itlb        = Vec(PortNumber * 2, new TlbRequestIO)
+  val itlb        = Vec(PortNumber, new TlbRequestIO)
   val respStall   = Input(Bool())
   val perfInfo = Output(new ICachePerfInfo)
 
@@ -155,38 +155,11 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   val s0_only_first  = (0 until partWayNum + 1).map(i => fromFtq.bits.readValid(i) && !fromFtqReq(i).crossCacheline)
   val s0_double_line = (0 until partWayNum + 1).map(i => fromFtq.bits.readValid(i) &&  fromFtqReq(i).crossCacheline)
 
-  val s0_slot_fire   = WireInit(false.B)
-  val s0_fetch_fire  = WireInit(false.B)
-
-  val s0_can_go = WireInit(false.B)
-
-  /** s0 tlb */
-  class tlbMissSlot(implicit p: Parameters) extends ICacheBundle{
-    val valid           = Bool()
-    val only_first      = Bool()
-    val double_line     = Bool()
-    val req_vaddr       = Vec(PortNumber,UInt(VAddrBits.W))
-    val req_vsetIdx     = Vec(PortNumber, UInt(idxBits.W))
-    val tlb_resp_paddr  = Vec(PortNumber,UInt(PAddrBits.W))
-    val tlb_resp_gpaddr = Vec(PortNumber,UInt(GPAddrBits.W))
-    val has_latch_resp  = Bool()
-    val tlb_resp_gpf    = Vec(PortNumber,Bool())
-    val tlb_resp_pf     = Vec(PortNumber,Bool())
-    val tlb_resp_af     = Vec(PortNumber,Bool())
-  }
-
-  val copied_tlb_slot_valid = Seq.fill(partWayNum)(RegInit(false.B))
-  val copied_miss_swtch_bit = Seq.fill(partWayNum)(RegInit(false.B))
-  val copied_tlb_slot_doubleline =  Seq.fill(partWayNum)(RegInit(false.B))
-  val copied_tlb_slot_vset_idx = Seq.fill(partWayNum)(RegInit(0.U.asTypeOf(Vec(PortNumber, UInt(idxBits.W)))))
-
-  val tlb_slot = RegInit(0.U.asTypeOf(new tlbMissSlot))
-
-  val s0_final_vaddr        = Mux(tlb_slot.valid,tlb_slot.req_vaddr ,s0_req_vaddr.head)
-  val s0_final_vsetIdx      = Mux(tlb_slot.valid,tlb_slot.req_vsetIdx ,s0_req_vsetIdx.head)
-  val s0_final_only_first   = Mux(tlb_slot.valid,tlb_slot.only_first ,s0_only_first.head)
-  val s0_final_double_line  = Mux(tlb_slot.valid,tlb_slot.double_line ,s0_double_line.head)
-
+  val s0_final_valid        = s0_valid
+  val s0_final_vaddr        = s0_req_vaddr.head
+  val s0_final_vsetIdx      = s0_req_vsetIdx.head
+  val s0_final_only_first   = s0_only_first.head
+  val s0_final_double_line  = s0_double_line.head
 
   /** SRAM request */
   //0 -> metaread, 1,2,3 -> data, 3 -> code 4 -> itlb
@@ -204,101 +177,31 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
 
 
   for(i <- 0 until partWayNum) {
-    toData.valid                  := (ftq_req_to_data_valid.head || copied_tlb_slot_valid.head) && !copied_miss_swtch_bit.head
-    toData.bits(i).readValid     := (ftq_req_to_data_valid(i) || copied_tlb_slot_valid(i)) && !copied_miss_swtch_bit(i)
-    toData.bits(i).isDoubleLine   := Mux(copied_tlb_slot_valid(i), copied_tlb_slot_doubleline(i) ,ftq_req_to_data_doubleline(i))
-    toData.bits(i).vSetIdx        := Mux(copied_tlb_slot_valid(i), copied_tlb_slot_vset_idx(i) ,ftq_req_to_data_vset_idx(i))
+    toData.valid                  := ftq_req_to_data_valid(i)
+    toData.bits(i).readValid      := ftq_req_to_data_valid(i)
+    toData.bits(i).isDoubleLine   := ftq_req_to_data_doubleline(i)
+    toData.bits(i).vSetIdx        := ftq_req_to_data_vset_idx(i)
   }
 
-  toMeta.valid                    := (s0_valid || tlb_slot.valid) && !missSwitchBit
-  toMeta.bits.isDoubleLine        := Mux(tlb_slot.valid,tlb_slot.double_line ,ftq_req_to_meta_doubleline)
-  toMeta.bits.vSetIdx             := Mux(tlb_slot.valid,tlb_slot.req_vsetIdx ,ftq_req_to_meta_vset_idx)
-  toMeta.bits.readValid           := DontCare
+  /** Meta request */
+  toMeta.valid               := s0_valid
+  toMeta.bits.isDoubleLine   := ftq_req_to_meta_doubleline
+  toMeta.bits.vSetIdx        := ftq_req_to_meta_vset_idx
+  toMeta.bits.readValid      := DontCare
 
-  toITLB(0).valid         := s0_valid  
-  toITLB(0).bits.size     := 3.U // TODO: fix the size
-  toITLB(0).bits.vaddr    := ftq_req_to_itlb_vaddr(0)
-  toITLB(0).bits.debug.pc := ftq_req_to_itlb_vaddr(0)
+  val toITLB_s0_valid    = VecInit(Seq(s0_valid, s0_valid && ftq_req_to_itlb_doubleline))
+  val toITLB_s0_size     = VecInit(Seq(3.U, 3.U)) // TODO: fix the size
+  val toITLB_s0_vaddr    = ftq_req_to_itlb_vaddr
+  val toITLB_s0_debug_pc = ftq_req_to_itlb_vaddr
 
-  toITLB(1).valid         := s0_valid && ftq_req_to_itlb_doubleline
-  toITLB(1).bits.size     := 3.U // TODO: fix the size
-  toITLB(1).bits.vaddr    := ftq_req_to_itlb_vaddr(1)
-  toITLB(1).bits.debug.pc := ftq_req_to_itlb_vaddr(1)
-
-  toITLB(2).valid         := tlb_slot.valid
-  toITLB(2).bits.size     := 3.U // TODO: fix the size
-  toITLB(2).bits.vaddr    := tlb_slot.req_vaddr(0)
-  toITLB(2).bits.debug.pc := tlb_slot.req_vaddr(0)
-
-  toITLB(3).valid         := tlb_slot.valid && tlb_slot.double_line
-  toITLB(3).bits.size     := 3.U // TODO: fix the size
-  toITLB(3).bits.vaddr    := tlb_slot.req_vaddr(1)
-  toITLB(3).bits.debug.pc := tlb_slot.req_vaddr(1)
-
-  toITLB.map{port =>
-    port.bits.cmd                 := TlbCmd.exec
-    port.bits.memidx              := DontCare
-    port.bits.debug.robIdx        := DontCare
-    port.bits.no_translate        := false.B
-    port.bits.debug.isFirstIssue  := DontCare
-    port.bits.kill                := DontCare
-    port.bits.hlvx                := DontCare
-    port.bits.hyperinst           := DontCare
-  }
-  io.itlb.foreach(_.req_kill := false.B)
-  /** ITLB miss wait logic */
-
-  //** tlb 0/1 port result **//
-  val tlb_miss_vec = VecInit((0 until PortNumber).map( i => toITLB(i).valid && fromITLB(i).bits.miss ))
-  val tlb_has_miss = tlb_miss_vec.reduce(_||_)
-  val tlb_miss_flush = RegNext(tlb_has_miss) && RegNext(s0_fetch_fire)
-
-  //** tlb 2/3 port result **//
-  val tlb_resp = Wire(Vec(2, Bool()))
-  tlb_resp(0) := !fromITLB(2).bits.miss && toITLB(2).valid
-  tlb_resp(1) := (!fromITLB(3).bits.miss && toITLB(3).valid) || !tlb_slot.double_line
-  val tlb_all_resp = RegNext(tlb_resp.reduce(_&&_))
-
-  val sram_ready = toData.ready && toMeta.ready
-
-  XSPerfAccumulate("icache_bubble_s0_tlb_miss",    s0_valid && tlb_has_miss )
-
-  when(tlb_has_miss && !tlb_slot.valid){
-    tlb_slot.valid        := s0_valid
-    copied_tlb_slot_valid.map(_ := s0_valid)
-    tlb_slot.only_first   := ftq_req_to_itlb_only_first
-    tlb_slot.double_line  := ftq_req_to_itlb_doubleline
-    copied_tlb_slot_doubleline.map(_ := ftq_req_to_itlb_doubleline)
-    tlb_slot.req_vaddr    := ftq_req_to_itlb_vaddr
-    tlb_slot.req_vsetIdx  := ftq_req_to_itlb_vset_idx
-    copied_tlb_slot_vset_idx.map(_ := ftq_req_to_itlb_vset_idx)
-  }
-
-  /** latch tlb resp when pipeline stops */
-  (0 until PortNumber).map{i => 
-    when(RegNext(tlb_resp(i)) && !s0_can_go){
-      tlb_slot.tlb_resp_gpaddr(i) := fromITLB(i + PortNumber).bits.gpaddr(0)
-      tlb_slot.tlb_resp_paddr(i)  := fromITLB(i + PortNumber).bits.paddr(0)
-      tlb_slot.tlb_resp_gpf(i)    := fromITLB(i + PortNumber).bits.excp(0).gpf.instr && fromITLB(i + PortNumber).valid
-      tlb_slot.tlb_resp_pf(i)     := fromITLB(i + PortNumber).bits.excp(0).pf.instr && fromITLB(i + PortNumber).valid
-      tlb_slot.tlb_resp_af(i)     := fromITLB(i + PortNumber).bits.excp(0).af.instr && fromITLB(i + PortNumber).valid
-    }
-  }
-  when(tlb_slot.valid && tlb_all_resp && !s0_can_go) { tlb_slot.has_latch_resp := true.B }
-
-  when(tlb_slot.valid && (tlb_all_resp || tlb_slot.has_latch_resp) && s0_can_go){
-    tlb_slot.valid := false.B
-    copied_tlb_slot_valid.map(_ := false.B)
-    tlb_slot.has_latch_resp := false.B
-  }
-
-  s0_can_go      := !missSwitchBit && s1_ready && sram_ready
-  s0_slot_fire   := tlb_slot.valid && (tlb_all_resp || tlb_slot.has_latch_resp) && s0_can_go
-  s0_fetch_fire  := s0_valid && !tlb_slot.valid && s0_can_go
-  s0_fire        := s0_slot_fire || s0_fetch_fire
+  val itlb_can_go    = toITLB(0).ready && toITLB(1).ready
+  val icache_can_go  = toData.ready && toMeta.ready
+  val pipe_can_go    = s1_ready
+  val s0_can_go      = itlb_can_go && icache_can_go && pipe_can_go
+  s0_fire  := s0_valid && s0_can_go
 
   //TODO: fix GTimer() condition
-  fromFtq.ready := sram_ready && !missSwitchBit  && !tlb_slot.valid && s1_ready
+  fromFtq.ready := s0_can_go
   /**
     ******************************************************************************
     * ICache Stage 1
@@ -309,55 +212,70 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
     */
 
   /** s1 control */
-  val tlbRespAllValid = WireInit(false.B)
+  val s1_valid = generatePipeControl(lastFire = s0_fire, thisFire = s1_fire, thisFlush = false.B, lastFlush = false.B)
 
-  val s1_valid = generatePipeControl(lastFire = s0_fire, thisFire = s1_fire, thisFlush = tlb_miss_flush, lastFlush = false.B)
-
-  val s1_req_vaddr   = RegEnable(s0_final_vaddr,    s0_fire)
+  val s1_req_vaddr   = RegEnable(s0_final_vaddr, s0_fire)
   val s1_req_vsetIdx = RegEnable(s0_final_vsetIdx, s0_fire)
   val s1_only_first  = RegEnable(s0_final_only_first, s0_fire)
   val s1_double_line = RegEnable(s0_final_double_line, s0_fire)
-  val s1_tlb_miss    = RegEnable(tlb_slot.valid, s0_fire)
 
-  val s1_tlb_use_latch = RegEnable(tlb_slot.has_latch_resp, s0_fire)
-  val s1_tlb_lath_resp_gpaddr = RegEnable(tlb_slot.tlb_resp_gpaddr, s0_fire)
-  val s1_tlb_lath_resp_paddr  = RegEnable(tlb_slot.tlb_resp_paddr, s0_fire)
-  val s1_tlb_latch_resp_gpf   = RegEnable(tlb_slot.tlb_resp_gpf, s0_fire)
-  val s1_tlb_latch_resp_pf    = RegEnable(tlb_slot.tlb_resp_pf, s0_fire)
-  val s1_tlb_latch_resp_af    = RegEnable(tlb_slot.tlb_resp_af, s0_fire)
+  /** tlb request and response */
+  fromITLB.foreach(_.ready := true.B)
+  val s1_wait_itlb  = RegInit(VecInit(Seq.fill(PortNumber)(false.B)))
 
-  s1_ready := s2_ready && tlbRespAllValid  || !s1_valid
-  s1_fire  := s1_valid && tlbRespAllValid && s2_ready && !tlb_miss_flush
+  (0 until PortNumber).foreach { i =>
+    when(RegNext(s0_fire) && fromITLB(i).bits.miss) {
+      s1_wait_itlb(i) := true.B
+    }.elsewhen(s1_wait_itlb(i) && !fromITLB(i).bits.miss) {
+      s1_wait_itlb(i) := false.B
+    }
+  }
 
-  fromITLB.map(_.ready := true.B)
+  val s1_need_itlb = Seq((RegNext(s0_fire) || s1_wait_itlb(0)) && fromITLB(0).bits.miss,
+                         (RegNext(s0_fire) || s1_wait_itlb(1)) && fromITLB(1).bits.miss && s1_double_line)
+  val toITLB_s1_valid    = s1_need_itlb
+  val toITLB_s1_size     = VecInit(Seq(3.U, 3.U)) // TODO: fix the size
+  val toITLB_s1_vaddr    = s1_req_vaddr
+  val toITLB_s1_debug_pc = s1_req_vaddr
+
+  // chose tlb req between s0 and s1
+  for (i <- 0 until PortNumber) {
+    toITLB(i).valid         := Mux(s1_need_itlb(i), toITLB_s1_valid(i), toITLB_s0_valid(i))
+    toITLB(i).bits.size     := Mux(s1_need_itlb(i), toITLB_s1_size(i), toITLB_s0_size(i))
+    toITLB(i).bits.vaddr    := Mux(s1_need_itlb(i), toITLB_s1_vaddr(i), toITLB_s0_vaddr(i))
+    toITLB(i).bits.debug.pc := Mux(s1_need_itlb(i), toITLB_s1_debug_pc(i), toITLB_s0_debug_pc(i))
+  }
+  toITLB.map{port =>
+    port.bits.cmd                 := TlbCmd.exec
+    port.bits.memidx              := DontCare
+    port.bits.debug.robIdx        := DontCare
+    port.bits.no_translate        := false.B
+    port.bits.hlvx                := false.B
+    port.bits.hyperinst           := false.B
+    port.bits.debug.isFirstIssue  := DontCare
+    port.bits.kill                := DontCare
+  }
+  io.itlb.foreach(_.req_kill := false.B)
 
   /** tlb response latch for pipeline stop */
-  val s1_tlb_all_resp_wire       =  RegNext(s0_fire)
-  val s1_tlb_all_resp_reg        =  RegInit(false.B)
-
-  when(s1_valid && s1_tlb_all_resp_wire && !tlb_miss_flush && !s2_ready)   {s1_tlb_all_resp_reg := true.B}
-  .elsewhen(s1_fire && s1_tlb_all_resp_reg)             {s1_tlb_all_resp_reg := false.B}
-
-  tlbRespAllValid := s1_tlb_all_resp_wire || s1_tlb_all_resp_reg
-
-  val hit_tlbRespGPAddr = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((0 until PortNumber).map( i => fromITLB(i).bits.gpaddr(0))))
-  val hit_tlbRespPAddr  = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((0 until PortNumber).map( i => fromITLB(i).bits.paddr(0))))
-  val hit_tlbExcpGPF    = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((0 until PortNumber).map( i => fromITLB(i).bits.excp(0).gpf.instr && fromITLB(i).valid)))
-  val hit_tlbExcpPF     = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((0 until PortNumber).map( i => fromITLB(i).bits.excp(0).pf.instr && fromITLB(i).valid)))
-  val hit_tlbExcpAF     = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((0 until PortNumber).map( i => fromITLB(i).bits.excp(0).af.instr && fromITLB(i).valid)))
-
-  val miss_tlbRespGPAddr = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((PortNumber until PortNumber * 2).map( i => fromITLB(i).bits.gpaddr(0))))
-  val miss_tlbRespPAddr  = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((PortNumber until PortNumber * 2).map( i => fromITLB(i).bits.paddr(0))))
-  val miss_tlbExcpGPF    = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((PortNumber until PortNumber * 2).map( i => fromITLB(i).bits.excp(0).gpf.instr && fromITLB(i).valid)))
-  val miss_tlbExcpPF     = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((PortNumber until PortNumber * 2).map( i => fromITLB(i).bits.excp(0).pf.instr && fromITLB(i).valid)))
-  val miss_tlbExcpAF     = ResultHoldBypass(valid = RegNext(s0_fire), data = VecInit((PortNumber until PortNumber * 2).map( i => fromITLB(i).bits.excp(0).af.instr && fromITLB(i).valid)))
-
-  val tlbRespGPAddr = Mux(s1_tlb_use_latch, s1_tlb_lath_resp_gpaddr, Mux(s1_tlb_miss, miss_tlbRespGPAddr, hit_tlbRespGPAddr))
-  val tlbRespPAddr  = Mux(s1_tlb_use_latch, s1_tlb_lath_resp_paddr, Mux(s1_tlb_miss, miss_tlbRespPAddr, hit_tlbRespPAddr))
-  val tlbExcpGPF    = Mux(s1_tlb_use_latch, s1_tlb_latch_resp_gpf, Mux(s1_tlb_miss, miss_tlbExcpGPF, hit_tlbExcpGPF))
-  val tlbExcpPF     = Mux(s1_tlb_use_latch, s1_tlb_latch_resp_pf, Mux(s1_tlb_miss, miss_tlbExcpPF, hit_tlbExcpPF))
-  val tlbExcpAF     = Mux(s1_tlb_use_latch, s1_tlb_latch_resp_af, Mux(s1_tlb_miss, miss_tlbExcpAF, hit_tlbExcpAF))
+  // val tlb_valid_tmp = VecInit((0 until PortNumber).map(i =>
+  //                       (RegNext(s0_fire) || s1_wait_itlb(i)) && !fromITLB(i).bits.miss))
+  val tlb_valid_tmp = VecInit(Seq((RegNext(s0_fire) || s1_wait_itlb(0)) && !fromITLB(0).bits.miss,
+                                  (RegNext(s0_fire) || s1_wait_itlb(1)) && !fromITLB(1).bits.miss && s1_double_line))
+  val tlbRespPAddr  = VecInit((0 until PortNumber).map(i =>
+                        ResultHoldBypass(valid = tlb_valid_tmp(i), data = fromITLB(i).bits.paddr(0))))
+  val tlbRespGPAddr = VecInit((0 until PortNumber).map(i =>
+                        ResultHoldBypass(valid = tlb_valid_tmp(i), data = fromITLB(i).bits.gpaddr(0))))
+  val tlbExcpPF     = VecInit((0 until PortNumber).map(i =>
+                        ResultHoldBypass(valid = tlb_valid_tmp(i), data = fromITLB(i).bits.excp(0).pf.instr)))
+  val tlbExcpGPF    = VecInit((0 until PortNumber).map(i =>
+                        ResultHoldBypass(valid = tlb_valid_tmp(i), data = fromITLB(i).bits.excp(0).gpf.instr)))
+  val tlbExcpAF     = VecInit((0 until PortNumber).map(i =>
+                        ResultHoldBypass(valid = tlb_valid_tmp(i), data = fromITLB(i).bits.excp(0).af.instr)))
   val tlbExcp       = VecInit((0 until PortNumber).map(i => tlbExcpAF(i) || tlbExcpPF(i) || tlbExcpGPF(i)))
+
+  val s1_tlb_valid = VecInit((0 until PortNumber).map(i => ValidHoldBypass(tlb_valid_tmp(i), s1_fire)))
+  val tlbRespAllValid = s1_tlb_valid(0) && (!s1_double_line || s1_double_line && s1_tlb_valid(1))
 
   /** s1 hit check/tag compare */
   val s1_req_paddr              = tlbRespPAddr
@@ -391,6 +309,15 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
 
   ((replacers zip touch_sets) zip touch_ways).map{case ((r, s),w) => r.access(s,w)}
 
+  when(s1_fire){
+    assert(PopCount(s1_tag_match_vec(0)) <= 1.U && (PopCount(s1_tag_match_vec(1)) <= 1.U || !s1_double_line),
+      "Multiple hit in main pipe, port0:is=%d,ptag=0x%x,vidx=0x%x,vaddr=0x%x port1:is=%d,ptag=0x%x,vidx=0x%x,vaddr=0x%x ",
+      PopCount(s1_tag_match_vec(0)) > 1.U,s1_req_ptags(0), get_idx(s1_req_vaddr(0)), s1_req_vaddr(0),
+      PopCount(s1_tag_match_vec(1)) > 1.U && s1_double_line, s1_req_ptags(1), get_idx(s1_req_vaddr(1)), s1_req_vaddr(1))
+  }
+
+  s1_ready := s2_ready && tlbRespAllValid || !s1_valid
+  s1_fire  := s1_valid && tlbRespAllValid && s2_ready
 
   /** <PERF> replace victim way number */
 
@@ -422,7 +349,7 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   /** s2 control */
   val s2_fetch_finish = Wire(Bool())
 
-  val s2_valid          = generatePipeControl(lastFire = s1_fire, thisFire = s2_fire, thisFlush = false.B, lastFlush = tlb_miss_flush)
+    val s2_valid          = generatePipeControl(lastFire = s1_fire, thisFire = s2_fire, thisFlush = false.B, lastFlush = false.B)
   val s2_miss_available = Wire(Bool())
 
   s2_ready      := (s2_valid && s2_fetch_finish && !io.respStall) || (!s2_valid && s2_miss_available)
@@ -791,11 +718,9 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
 
   when(toMSHR.map(_.valid).reduce(_||_)){
     missSwitchBit := true.B
-    copied_miss_swtch_bit.foreach(_ := true.B)
     io.prefetchEnable := true.B
   }.elsewhen(missSwitchBit && s2_fetch_finish){
     missSwitchBit := false.B
-    copied_miss_swtch_bit.foreach(_ := false.B)
     io.prefetchDisable := true.B
   }
 

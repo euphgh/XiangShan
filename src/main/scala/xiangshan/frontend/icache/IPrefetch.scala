@@ -89,7 +89,7 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
   /** Prefetch Stage 0: req from Ftq */
   val p0_valid  =   fromFtq.req.valid
   val p0_vaddr  =   addrAlign(fromFtq.req.bits.target, blockBytes, VAddrBits)
-  p0_fire   :=   p0_valid && p1_ready && toITLB.fire && !fromITLB.bits.miss && toIMeta.ready && enableBit
+  p0_fire   :=   p0_valid && p1_ready && toITLB.ready && toIMeta.ready && enableBit
   //discard req when source not ready
   // p0_discard := p0_valid && ((toITLB.fire && fromITLB.bits.miss) || !toIMeta.ready || !enableBit)
 
@@ -112,7 +112,8 @@ class IPrefetchPipe(implicit p: Parameters) extends  IPrefetchModule
   toITLB.bits.hyperinst := DontCare
   toITLB.bits.hlvx := DontCare
   toITLB.bits.kill := false.B
-  io.iTLBInter.req_kill := false.B
+  // TODO: whether to handle tlb miss for prefetch
+  io.iTLBInter.req_kill := true.B
 
   fromITLB.ready := true.B
 

@@ -114,14 +114,14 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
   // ifu.io.iTLBInter.resp  <> itlb_requestors(1).resp
   // icache.io.itlb(1).resp <> itlb_requestors(1).resp
 
-  val itlb = Module(new TLB(6, nRespDups = 1, Seq.fill(6)(false), itlbParams))
-  itlb.io.requestor.take(5) zip icache.io.itlb foreach {case (a,b) => a <> b}
+  val itlb = Module(new TLB(4, nRespDups = 1, Seq.fill(3)(false) :+ true, itlbParams))
+  itlb.io.requestor.take(3) zip icache.io.itlb foreach {case (a,b) => a <> b}
   itlb.io.requestor.last <> ifu.io.iTLBInter
   itlb.io.hartId := io.hartId
   itlb.io.base_connect(io.sfence, io.tlbCsr)
   itlb.io.flushPipe.map(_ := needFlush)
 
-  val itlb_ptw = Wire(new VectorTlbPtwIO(6))
+  val itlb_ptw = Wire(new VectorTlbPtwIO(4))
   itlb_ptw.connect(itlb.io.ptw)
   val itlbRepeater1 = PTWFilter(itlbParams.fenceDelay, itlb_ptw, sfence, tlbCsr, l2tlbParams.ifilterSize)
   io.ptw <> itlbRepeater1.io.ptw
