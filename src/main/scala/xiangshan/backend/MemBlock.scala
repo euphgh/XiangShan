@@ -43,6 +43,7 @@ class Std(implicit p: Parameters) extends FunctionUnit {
 
 class MemBlock()(implicit p: Parameters) extends LazyModule
   with HasXSParameter with HasWritebackSource {
+  override def shouldBeInlined: Boolean = false
 
   val dcache = LazyModule(new DCacheWrapper())
   val uncache = LazyModule(new Uncache())

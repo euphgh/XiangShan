@@ -58,6 +58,7 @@ class MinimalConfig(n: Int = 1) extends Config(
       _.copy(
         DecodeWidth = 2,
         RenameWidth = 2,
+        CommitWidth = 2,
         FetchWidth = 4,
         IssQueSize = 8,
         NRPhyRegs = 64,
@@ -70,6 +71,8 @@ class MinimalConfig(n: Int = 1) extends Config(
         IBufSize = 16,
         StoreBufferSize = 4,
         StoreBufferThreshold = 3,
+        LoadPipelineWidth = 2,
+        StorePipelineWidth = 2,
         dpParams = DispatchParameters(
           IntDqSize = 12,
           FpDqSize = 12,
@@ -128,24 +131,16 @@ class MinimalConfig(n: Int = 1) extends Config(
         ),
         ldtlbParameters = TLBParameters(
           name = "ldtlb",
-          normalNSets = 16, // 6when da or sa
-          normalNWays = 1, // when fa or sa
-          normalAssociative = "sa",
-          normalReplacer = Some("setplru"),
-          superNWays = 4,
-          normalAsVictim = true,
+          NWays = 4,
           partialStaticPMP = true,
+          outsideRecvFlush = true,
           outReplace = false
         ),
         sttlbParameters = TLBParameters(
           name = "sttlb",
-          normalNSets = 16, // when da or sa
-          normalNWays = 1, // when fa or sa
-          normalAssociative = "sa",
-          normalReplacer = Some("setplru"),
-          normalAsVictim = true,
-          superNWays = 4,
+          NWays = 4,
           partialStaticPMP = true,
+          outsideRecvFlush = true,
           outReplace = false
         ),
         btlbParameters = TLBParameters(
