@@ -988,6 +988,8 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
   flushPipe := resetSatp || frm_change || isXRet || frontendTriggerUpdate
 
   private val illegalRetTarget = WireInit(false.B)
+
+  // Mux tree for wires
   when(valid) {
     when(isDret) {
       retTarget := dpc(VAddrBits - 1, 0)
@@ -997,23 +999,6 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
       retTarget := Mux(virtMode, vsepc(VAddrBits - 1, 0), sepc(VAddrBits - 1, 0))
     }.elsewhen(isUret) {
       retTarget := uepc(VAddrBits - 1, 0)
-    }.otherwise {
-      illegalRetTarget := true.B
-    }
-  }.otherwise {
-    illegalRetTarget := true.B // when illegalRetTarget setted, retTarget should never be used
-  }
-
-  // Mux tree for wires
-  when (valid) {
-    when (isDret) {
-      retTarget := dpc(VAddrBits-1, 0)
-    }.elsewhen (isMret && !illegalMret) {
-      retTarget := mepc(VAddrBits-1, 0)
-    }.elsewhen (isSret && !illegalSret && !illegalSModeSret) {
-      retTarget := sepc(VAddrBits-1, 0)
-    }.elsewhen (isUret) {
-      retTarget := uepc(VAddrBits-1, 0)
     }.otherwise {
       illegalRetTarget := true.B
     }
