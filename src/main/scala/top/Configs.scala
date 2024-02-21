@@ -120,6 +120,7 @@ class MinimalConfig(n: Int = 1) extends Config(
           name = "itlb",
           fetchi = true,
           useDmode = false,
+          NWays = 4,
           sameCycle = false,
           missSameCycle = true,
           normalReplacer = Some("plru"),
