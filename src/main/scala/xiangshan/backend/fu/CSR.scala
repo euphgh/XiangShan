@@ -980,7 +980,7 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
 
   // Branch control
   val retTarget = WireInit(0.U)
-  val resetSatp = addr === Satp.U && wen // write to satp will cause the pipeline be flushed
+  val resetSatp = (addr === Satp.U || addr === Hgatp.U || addr === Vsatp.U) && wen // write to satp will cause the pipeline be flushed
   val w_fcsr_change_rm = wen && addr === Fcsr.U && wdata(7, 5) =/= fcsr(7, 5)
   val w_frm_change_rm = wen && addr === Frm.U && wdata(2, 0) =/= fcsr(7, 5)
   val frm_change = w_fcsr_change_rm || w_frm_change_rm
@@ -1327,10 +1327,7 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
     }.elsewhen (debugMode) {
       //do nothing
     }.elsewhen (delegVS) {
-      vscause := (raiseIntr << (XLEN-1)).asUInt | Mux(raiseIntr, intrNO >> 1.U, exceptionNO)
-      vsepc := Mux(hasInstrPageFault || hasInstrAccessFault, iexceptionPC, dexceptionPC)
-      vsstatusNew.spp := priviledgeMode
-      vsstatusNew.pie.s := vsstatusOld.ie.s
+      vscause := (hasIntr << (XLEN-1)).asUInt | Mux(hasIntr, intrNO - 1.U, exceptionNO)
       vsstatusNew.ie.s := false.B
       when (clearTval) {vstval := 0.U}
       virtMode := true.B
