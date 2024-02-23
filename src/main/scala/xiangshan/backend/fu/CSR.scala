@@ -1328,6 +1328,9 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
       //do nothing
     }.elsewhen (delegVS) {
       vscause := (hasIntr << (XLEN-1)).asUInt | Mux(hasIntr, intrNO - 1.U, exceptionNO)
+      vsepc := Mux(hasInstrPageFault || hasInstrAccessFault, iexceptionPC, dexceptionPC)
+      vsstatusNew.spp := priviledgeMode
+      vsstatusNew.pie.s := vsstatusOld.ie.s
       vsstatusNew.ie.s := false.B
       when (clearTval) {vstval := 0.U}
       virtMode := true.B
@@ -1336,7 +1339,7 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
       val virt = Mux(mstatusOld.mprv.asBool, mstatusOld.mpv, virtMode)
       // to do hld st
       hstatusNew.gva := (hasInstGuestPageFault || hasLoadGuestPageFault || hasStoreGuestPageFault ||
-                      ((virt.asBool || isHyperInst) && ((raiseException && 0.U <= exceptionNO && exceptionNO <= 7.U && exceptionNO =/= 2.U)
+                      ((virt.asBool || isHyperInst) && ((hasException && 0.U <= exceptionNO && exceptionNO <= 7.U && exceptionNO =/= 2.U)
                       || hasInstrPageFault || hasLoadPageFault || hasStorePageFault)))
       hstatusNew.spv := virtMode
       when(virtMode){
