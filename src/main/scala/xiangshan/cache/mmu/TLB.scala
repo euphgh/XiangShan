@@ -83,18 +83,20 @@ class TLB(Width: Int, nRespDups: Int = 1, Block: Seq[Boolean], q: TLBParameters)
   val virt_out = req.map(a => RegEnable(csr.priv.virt, a.fire))
   val sum = (0 until Width).map(i => Mux(virt_out(i) || isHyperInst(i), io.csr.priv.vsum, io.csr.priv.sum))
   val mxr = (0 until Width).map(i => Mux(virt_out(i) || isHyperInst(i), io.csr.priv.vmxr || io.csr.priv.mxr, io.csr.priv.mxr))
-  val req_in_s2xlate = (0 until Width).map(i => MuxCase(noS2xlate, Seq(
-      (!(virt_in || req_in(i).bits.hyperinst)) -> noS2xlate,
-      (csr.vsatp.mode =/= 0.U && csr.hgatp.mode =/= 0.U) -> allStage,
-      (csr.vsatp.mode === 0.U) -> onlyStage2,
-      (csr.hgatp.mode === 0.U) -> onlyStage1
-    )))
-  val req_out_s2xlate = (0 until Width).map(i => MuxCase(noS2xlate, Seq(
-    (!(virt_out(i) || isHyperInst(i))) -> noS2xlate,
-    (csr.vsatp.mode =/= 0.U && csr.hgatp.mode =/= 0.U) -> allStage,
-    (csr.vsatp.mode === 0.U) -> onlyStage2,
-    (csr.hgatp.mode === 0.U) -> onlyStage1
-  )))
+
+  def genS2xlate(vsatp: TlbSatpBundle, hgatp: TlbSatpBundle, need_gpa: Bool, vir: Bool, hyperinst: Bool) = {
+    MuxCase(noS2xlate, 
+      Seq(
+        (!(vir || hyperinst)) -> noS2xlate,
+        (vsatp.mode =/= 0.U && hgatp.mode =/= 0.U) -> allStage,
+        (vsatp.mode === 0.U) -> onlyStage2,
+        (hgatp.mode === 0.U || need_gpa) -> onlyStage1
+      )
+    )
+  }
+
+  val req_in_s2xlate = (0 until Width).map(i => genS2xlate(csr.vsatp, csr.hgatp, false.B, virt_in, req(i).bits.hyperinst))
+  val req_out_s2xlate = req_in_s2xlate.map(RegNext(_))
   val need_gpa = RegInit(false.B)
   val need_gpa_vpn = Reg(UInt(vpnLen.W))
   val need_gpa_gvpn = Reg(UInt(vpnLen.W))
@@ -272,13 +274,7 @@ class TLB(Width: Int, nRespDups: Int = 1, Block: Seq[Boolean], q: TLBParameters)
     XSError(!io.requestor(idx).resp.ready, s"${q.name} port ${idx} is non-block, resp.ready must be true.B")
 
     val req_need_gpa = hasGpf(idx)
-    val req_s2xlate = Wire(UInt(2.W))
-    req_s2xlate := MuxCase(noS2xlate, Seq(
-      (!(virt_out(idx) || req_out(idx).hyperinst)) -> noS2xlate,
-      (csr.vsatp.mode =/= 0.U && csr.hgatp.mode =/= 0.U) -> allStage,
-      (csr.vsatp.mode === 0.U) -> onlyStage2,
-      (csr.hgatp.mode === 0.U || req_need_gpa) -> onlyStage1
-    ))
+    val req_s2xlate = genS2xlate(csr.vsatp, csr.hgatp, req_need_gpa, virt_out(idx), req_out(idx).hyperinst)
    
     val ptw_just_back = ptw.resp.fire && req_s2xlate === ptw.resp.bits.s2xlate && ptw.resp.bits.hit(get_pn(req_out(idx).vaddr), io.csr.satp.asid, io.csr.vsatp.asid, io.csr.hgatp.asid, true, false)
     val ptw_already_back = RegNext(ptw.resp.fire) && req_s2xlate === RegNext(ptw.resp.bits).s2xlate && RegNext(ptw.resp.bits).hit(get_pn(req_out(idx).vaddr), io.csr.satp.asid, io.csr.vsatp.asid, io.csr.hgatp.asid, allType = true)
@@ -302,13 +298,7 @@ class TLB(Width: Int, nRespDups: Int = 1, Block: Seq[Boolean], q: TLBParameters)
     val req_need_gpa = hasGpf(idx)
     val miss_req_vpn = get_pn(req_out(idx).vaddr)
     val miss_req_memidx = req_out(idx).memidx
-    val miss_req_s2xlate = Wire(UInt(2.W))
-    miss_req_s2xlate := MuxCase(noS2xlate, Seq(
-      (!(virt_out(idx) || req_out(idx).hyperinst)) -> noS2xlate,
-      (csr.vsatp.mode =/= 0.U && csr.hgatp.mode =/= 0.U) -> allStage,
-      (csr.vsatp.mode === 0.U) -> onlyStage2,
-      (csr.hgatp.mode === 0.U || req_need_gpa) -> onlyStage1
-    ))
+    val miss_req_s2xlate = genS2xlate(csr.vsatp, csr.hgatp, req_need_gpa, virt_out(idx), req_out(idx).hyperinst)
     val miss_req_s2xlate_reg = RegEnable(miss_req_s2xlate, io.ptw.req(idx).fire)
     val hasS2xlate = miss_req_s2xlate_reg =/= noS2xlate
     val onlyS2 = miss_req_s2xlate_reg === onlyStage2
@@ -449,15 +439,7 @@ class TLB(Width: Int, nRespDups: Int = 1, Block: Seq[Boolean], q: TLBParameters)
       difftest.satp := Cat(io.csr.satp.mode, io.csr.satp.asid, io.csr.satp.ppn)
       difftest.vsatp := Cat(io.csr.vsatp.mode, io.csr.vsatp.asid, io.csr.vsatp.ppn)
       difftest.hgatp := Cat(io.csr.hgatp.mode, io.csr.hgatp.asid, io.csr.hgatp.ppn)
-      val req_need_gpa = gpf
-      val req_s2xlate = Wire(UInt(2.W))
-      req_s2xlate := MuxCase(noS2xlate, Seq(
-        (!RegNext(virt_in || req_in(i).bits.hyperinst)) -> noS2xlate,
-        (vsatp.mode =/= 0.U && hgatp.mode =/= 0.U) -> allStage,
-        (vsatp.mode === 0.U) -> onlyStage2,
-        (hgatp.mode === 0.U || req_need_gpa) -> onlyStage1
-      ))
-      difftest.s2xlate := req_s2xlate
+      difftest.s2xlate := genS2xlate(csr.vsatp, csr.hgatp, gpf, virt_out.head, req_out(i).hyperinst)
     }
   }
 }
