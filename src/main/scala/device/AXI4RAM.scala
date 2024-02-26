@@ -16,26 +16,12 @@
 
 package device
 
-import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.ExtModule
-import freechips.rocketchip.amba.axi4.{AXI4EdgeParameters, AXI4MasterNode, AXI4SlaveNode}
-import freechips.rocketchip.diplomacy.{AddressSet, InModuleBody, LazyModule, LazyModuleImp, RegionType}
-import utility.MaskExpand
-
-class RAMHelper(memByte: BigInt) extends ExtModule {
-  val DataBits = 64
-
-  val clk   = IO(Input(Clock()))
-  val en    = IO(Input(Bool()))
-  val rIdx  = IO(Input(UInt(DataBits.W)))
-  val rdata = IO(Output(UInt(DataBits.W)))
-  val wIdx  = IO(Input(UInt(DataBits.W)))
-  val wdata = IO(Input(UInt(DataBits.W)))
-  val wmask = IO(Input(UInt(DataBits.W)))
-  val wen   = IO(Input(Bool()))
-}
+import difftest.common.DifftestMem
+import freechips.rocketchip.amba.axi4.AXI4SlaveNode
+import freechips.rocketchip.diplomacy.{AddressSet, LazyModule}
+import org.chipsalliance.cde.config.Parameters
 
 class AXI4RAM
 (
@@ -50,8 +36,6 @@ class AXI4RAM
 {
   override lazy val module = new AXI4SlaveModuleImp(this){
 
-    val split = beatBytes / 8
-    val bankByte = memByte / split
     val offsetBits = log2Up(memByte)
 
     require(address.length >= 1)
@@ -59,26 +43,24 @@ class AXI4RAM
 
     def index(addr: UInt) = ((addr - baseAddress.U)(offsetBits - 1, 0) >> log2Ceil(beatBytes)).asUInt
 
-    def inRange(addr: UInt) = addr < (baseAddress + memByte).U
+    def inRange(idx: UInt) = idx < (memByte / beatBytes).U
 
     val wIdx = index(waddr) + writeBeatCnt
     val rIdx = index(raddr) + readBeatCnt
-    val wen = in.w.fire && inRange(waddr)
+    val wen = in.w.fire && inRange(wIdx)
     require(beatBytes >= 8)
 
     val rdata = if (useBlackBox) {
-      val mems = (0 until split).map {_ => Module(new RAMHelper(bankByte))}
-      mems.zipWithIndex map { case (mem, i) =>
-        mem.clk   := clock
-        mem.en    := !reset.asBool && ((state === s_rdata) || (state === s_wdata))
-        mem.rIdx  := (rIdx << log2Up(split)) + i.U
-        mem.wIdx  := (wIdx << log2Up(split)) + i.U
-        mem.wdata := in.w.bits.data((i + 1) * 64 - 1, i * 64)
-        mem.wmask := MaskExpand(in.w.bits.strb((i + 1) * 8 - 1, i * 8))
-        mem.wen   := wen
+      val mem = DifftestMem(memByte, beatBytes)
+      when (wen) {
+        mem.write(
+          addr = wIdx,
+          data = in.w.bits.data.asTypeOf(Vec(beatBytes, UInt(8.W))),
+          mask = in.w.bits.strb.asBools
+        )
       }
-      val rdata = mems.map {mem => mem.rdata}
-      Cat(rdata.reverse)
+      val raddr = Mux(in.r.fire && !rLast, rIdx + 1.U, rIdx)
+      mem.readAndHold(raddr, in.ar.fire || in.r.fire).asUInt
     } else {
       val mem = Mem(memByte / beatBytes, Vec(beatBytes, UInt(8.W)))
 
@@ -93,23 +75,14 @@ class AXI4RAM
   }
 }
 
-class AXI4RAMWrapper
-(snode: AXI4SlaveNode, memByte: Long, useBlackBox: Boolean = false)
-(implicit p: Parameters)
-  extends LazyModule {
-
-  val mnode = AXI4MasterNode(List(snode.in.head._2.master))
-
-  val portParam = snode.portParams.head
-  val slaveParam = portParam.slaves.head
-  val burstLen = portParam.maxTransfer / portParam.beatBytes
+class AXI4RAMWrapper (
+  slave: AXI4SlaveNode,
+  memByte: Long,
+  useBlackBox: Boolean = false
+ )(implicit p: Parameters) extends AXI4MemorySlave(slave, memByte, useBlackBox) {
   val ram = LazyModule(new AXI4RAM(
     slaveParam.address, memByte, useBlackBox,
     slaveParam.executable, portParam.beatBytes, burstLen
   ))
-  ram.node := mnode
-
-  val io_axi4 = InModuleBody{ mnode.makeIOs() }
-
-  lazy val module = new LazyModuleImp(this){}
+  ram.node := master
 }

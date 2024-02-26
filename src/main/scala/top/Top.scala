@@ -20,7 +20,7 @@ import chisel3._
 import chisel3.util._
 import xiangshan._
 import utils._
-import huancun.{HCCacheParamsKey, HuanCun}
+import huancun.{HCCacheParameters, HCCacheParamsKey, HuanCun, PrefetchRecv, TPmetaResp}
 import utility._
 import system._
 import device._
@@ -68,9 +68,17 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
 
   val l3cacheOpt = soc.L3CacheParamsOpt.map(l3param =>
     LazyModule(new HuanCun()(new Config((_, _, _) => {
-      case HCCacheParamsKey => l3param
+      case HCCacheParamsKey => l3param.copy(
+        hartIds = tiles.map(_.HartId),
+        FPGAPlatform = debugOpts.FPGAPlatform
+      )
     })))
   )
+
+  val l3_pf_sender_opt = soc.L3CacheParamsOpt.getOrElse(HCCacheParameters()).prefetch match {
+    case Some(pf) => Some(BundleBridgeSource(() => new PrefetchRecv))
+    case None => None
+  }
 
   for (i <- 0 until NumCores) {
     core_with_l2(i).clint_int_sink := misc.clint.intnode
@@ -98,7 +106,25 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
 
   l3cacheOpt match {
     case Some(l3) =>
-      misc.l3_out :*= l3.node :*= TLBuffer.chainNode(2) :*= misc.l3_banked_xbar
+      misc.l3_out :*= l3.node :*= misc.l3_banked_xbar
+      l3.pf_recv_node.map(recv => {
+        println("Connecting L1 prefetcher to L3!")
+        recv := l3_pf_sender_opt.get
+      })
+      l3.tpmeta_recv_node.foreach(recv => {
+        for ((core, i) <- core_with_l2.zipWithIndex) {
+          println(s"Connecting core_$i\'s L2 TPmeta request to L3!")
+          recv := core.core_l3_tpmeta_source_port.get
+        }
+      })
+      l3.tpmeta_send_node.foreach(send => {
+        val broadcast = LazyModule(new ValidIOBroadcast[TPmetaResp]())
+        broadcast.node := send
+        for ((core, i) <- core_with_l2.zipWithIndex) {
+          println(s"Connecting core_$i\'s L2 TPmeta response to L3!")
+          core.core_l3_tpmeta_sink_port.get := broadcast.node
+        }
+      })
     case None =>
   }
 
@@ -168,9 +194,23 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
       }
     }
 
+    l3cacheOpt match {
+      case Some(l3) =>
+        l3.pf_recv_node match {
+          case Some(recv) =>
+            l3_pf_sender_opt.get.out.head._1.addr_valid := false.B
+            for (i <- 0 until NumCores) {
+              l3_pf_sender_opt.get.out.head._1.addr := DontCare
+              l3_pf_sender_opt.get.out.head._1.l2_pf_en := false.B
+            }
+          case None =>
+        }
+        l3.module.io.debugTopDown.robHeadPaddr := DontCare
+    }
+
     misc.module.debug_module_io.resetCtrl.hartIsInReset := core_with_l2.map(_.module.reset.asBool)
     misc.module.debug_module_io.clock := io.clock
-    misc.module.debug_module_io.reset := misc.module.reset
+    misc.module.debug_module_io.reset := reset_sync
 
     misc.module.debug_module_io.debugIO.reset := misc.module.reset
     misc.module.debug_module_io.debugIO.clock := io.clock.asClock

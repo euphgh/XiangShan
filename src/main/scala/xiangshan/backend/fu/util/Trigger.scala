@@ -274,7 +274,7 @@ trait SdtrigExt {
     val eq = data === tdata
     val ge = data >= tdata
     val lt = data < tdata
-    val res = MuxLookup(matchType, false.B, Seq(
+    val res = MuxLookup(matchType, false.B)(Seq(
       TrigMatchEnum.EQ -> eq,
       TrigMatchEnum.GE -> ge,
       TrigMatchEnum.LT -> lt
