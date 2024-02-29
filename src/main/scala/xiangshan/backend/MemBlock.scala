@@ -213,6 +213,7 @@ class MemBlockImp(outer: MemBlock) extends LazyModuleImp(outer)
   dtlb.foreach(t => {
     t.hartId := io.hartId
     t.flushPipe.foreach(_ := false.B)
+    t.redirect := io.redirect
   })
   if (refillBothTlb) {
     require(ldtlbParams.outReplace == sttlbParams.outReplace)
@@ -259,6 +260,9 @@ class MemBlockImp(outer: MemBlock) extends LazyModuleImp(outer)
     dtlb_ld.foreach(_.ptw.resp.valid := ptw_resp_v && Cat(ptw_resp_next.vector.take(ld_tlb_ports)).orR)
     dtlb_st.foreach(_.ptw.resp.valid := ptw_resp_v && Cat(ptw_resp_next.vector.drop(ld_tlb_ports)).orR)
   }
+  dtlb_ld.foreach(_.ptw.resp.bits.getGpa := Cat(ptw_resp_next.getGpa.take(exuParameters.LduCnt + 1)).orR)
+  dtlb_st.foreach(_.ptw.resp.bits.getGpa := Cat(ptw_resp_next.getGpa.drop(exuParameters.LduCnt + 1).take(exuParameters.StuCnt)).orR)
+  dtlb_prefetch.foreach(_.ptw.resp.bits.getGpa := Cat(ptw_resp_next.getGpa.drop(exuParameters.LduCnt + exuParameters.StuCnt + 1)).orR)
 
 
   // pmp
