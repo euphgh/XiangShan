@@ -84,7 +84,10 @@ class XSTile()(implicit p: Parameters) extends LazyModule
   private val misc = LazyModule(new XSTileMisc())
   private val l2cache = coreParams.L2CacheParamsOpt.map(l2param =>
     LazyModule(new HuanCun()(new Config((_, _, _) => {
-      case HCCacheParamsKey => l2param
+      case HCCacheParamsKey => l2param.copy(
+        hartIds = tiles.map(_.HartId),
+        FPGAPlatform = debugOpts.FPGAPlatform
+      )
     })))
   )
 
@@ -170,6 +173,7 @@ class XSTile()(implicit p: Parameters) extends LazyModule
     io.cpu_halt := core.module.io.cpu_halt
     if(l2cache.isDefined){
       core.module.io.perfEvents.zip(l2cache.get.module.io.perfEvents.flatten).foreach(x => x._1.value := x._2)
+      l2cache.get.module.io.debugTopDown.robHeadPaddr := DontCare
     }
     else {
       core.module.io.perfEvents <> DontCare
