@@ -246,12 +246,7 @@ class MemBlockImp(outer: MemBlock) extends LazyModuleImp(outer)
     val vector_hit = if (refillBothTlb) Cat(ptw_resp_next.vector).orR
       else if (i < exuParameters.LduCnt) Cat(ptw_resp_next.vector.take(exuParameters.LduCnt)).orR
       else Cat(ptw_resp_next.vector.drop(exuParameters.LduCnt)).orR
-    val hasS2xlate = tlb.bits.hasS2xlate()
-    val isOnlyStage2 = tlb.bits.isOnlyStage2() && ptw_resp_next.data.isOnlyStage2()
-    val s1_hit = ptw_resp_next.data.s1.hit(tlb.bits.vpn, Mux(hasS2xlate, tlbcsr_dup(i).vsatp.asid, tlbcsr_dup(i).satp.asid), 
-      tlbcsr_dup(i).hgatp.asid, allType = true, ignoreAsid = true, hasS2xlate)
-    val s2_hit = ptw_resp_next.data.s2.hit(tlb.bits.vpn, tlbcsr_dup(i).hgatp.asid)
-    io.ptw.req(i).valid := tlb.valid && !(ptw_resp_v && vector_hit && Mux(isOnlyStage2, s2_hit, s1_hit))
+    io.ptw.req(i).valid := tlb.valid && !(ptw_resp_v && vector_hit && ptw_resp_next.data.hit(tlb.bits.vpn, tlbcsr_dup(i).satp.asid, tlbcsr_dup(i).vsatp.asid, tlbcsr_dup(i).hgatp.asid, allType = true, ignoreAsid = true))
   }
   dtlb.foreach(_.ptw.resp.bits := ptw_resp_next.data)
   if (refillBothTlb) {
