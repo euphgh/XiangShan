@@ -510,7 +510,7 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   val cacheline_1_hit_dup_3  = (s2_port_hit_dup_vec(3)(1) ||  sec_meet_1_miss_dup_3)
   val cacheline_1_miss_dup_3 = !s2_port_hit_dup_vec(3)(1) && !sec_meet_1_miss_dup_3
 
-  val  only_0_miss      = RegNext(s1_fire) && cacheline_0_miss && !s2_double_line && !s2_has_except && !s2_mmio
+  val  only_0_miss      = RegNext(s1_fire) && cacheline_0_miss && !s2_double_line && !s2_except(0) && !s2_mmio
   val  only_0_hit       = RegNext(s1_fire) && cacheline_0_hit  && !s2_double_line && !s2_mmio
   val  hit_0_hit_1      = RegNext(s1_fire) && cacheline_0_hit_dup_1  && cacheline_1_hit_dup_1  && s2_double_line && !s2_mmio
   val  hit_0_miss_1     = RegNext(s1_fire) && cacheline_0_hit_dup_1  && cacheline_1_miss_dup_1 && s2_double_line  && !s2_has_except && !s2_mmio
