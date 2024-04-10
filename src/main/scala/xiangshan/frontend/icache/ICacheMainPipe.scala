@@ -536,11 +536,11 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   val  hit_0_miss_1_latch     =   holdReleaseLatch(valid = hit_0_miss_1,    release = s2_fire,      flush = false.B)
 
   val  miss_0_except_1_latch  =   holdReleaseLatch(valid = miss_0_except_1, release = s2_fire,      flush = false.B)
-  val  except_0_latch          =   holdReleaseLatch(valid = except_0,    release = s2_fire,      flush = false.B)
-  val  hit_0_except_1_latch         =    holdReleaseLatch(valid = hit_0_except_1,    release = s2_fire,      flush = false.B)
+  val  except_0_latch         =   holdReleaseLatch(valid = except_0,        release = s2_fire,      flush = false.B)
+  val  hit_0_except_1_latch   =   holdReleaseLatch(valid = hit_0_except_1,  release = s2_fire,      flush = false.B)
 
-  val only_0_hit_latch        = holdReleaseLatch(valid = only_0_hit,   release = s2_fire,      flush = false.B)
-  val hit_0_hit_1_latch        = holdReleaseLatch(valid = hit_0_hit_1,   release = s2_fire,      flush = false.B)
+  val only_0_hit_latch        =   holdReleaseLatch(valid = only_0_hit,      release = s2_fire,      flush = false.B)
+  val hit_0_hit_1_latch       =   holdReleaseLatch(valid = hit_0_hit_1,     release = s2_fire,      flush = false.B)
 
 
   /*** secondary miss judegment ***/
