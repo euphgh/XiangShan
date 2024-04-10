@@ -257,7 +257,6 @@ class MemBlockImp(outer: MemBlock) extends LazyModuleImp(outer)
   }
   dtlb_ld.foreach(_.ptw.resp.bits.getGpa := Cat(ptw_resp_next.getGpa.take(exuParameters.LduCnt + 1)).orR)
   dtlb_st.foreach(_.ptw.resp.bits.getGpa := Cat(ptw_resp_next.getGpa.drop(exuParameters.LduCnt + 1).take(exuParameters.StuCnt)).orR)
-  dtlb_prefetch.foreach(_.ptw.resp.bits.getGpa := Cat(ptw_resp_next.getGpa.drop(exuParameters.LduCnt + exuParameters.StuCnt + 1)).orR)
 
 
   // pmp

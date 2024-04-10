@@ -280,7 +280,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
   val ptwl1replace = ReplacementPolicy.fromString(l2tlbParams.l1Replacer, l2tlbParams.l1Size)
   val (l1Hit, l1HitPPN, l1Pre) = {
     val hitVecT = l1.zipWithIndex.map {
-      case (e, i) => (e.hit(vpn_search, io.csr_dup(0).satp.asid, io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate)
+      case (e, i) => (e.hit(vpn_search, io.csr_dup(0).satp.asid, io.csr_dup(0).vsatp.asid, io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate)
         && l1v(i) && h_search === l1h(i))
     }
     val hitVec = hitVecT.map(RegEnable(_, stageReq.fire))
@@ -294,7 +294,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
 
     l1AccessPerf.zip(hitVec).map{ case (l, h) => l := h && stageDelay_valid_1cycle}
     for (i <- 0 until l2tlbParams.l1Size) {
-      XSDebug(stageReq.fire, p"[l1] l1(${i.U}) ${l1(i)} hit:${l1(i).hit(vpn_search, Mux(h_search =/= noS2xlate, io.csr_dup(0).vsatp.asid, io.csr_dup(0).satp.asid), io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate)}\n")
+      XSDebug(stageReq.fire, p"[l1] l1(${i.U}) ${l1(i)} hit:${l1(i).hit(vpn_search, io.csr_dup(0).satp.asid, io.csr_dup(0).vsatp.asid, io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate)}\n")
     }
     XSDebug(stageReq.fire, p"[l1] l1v:${Binary(l1v)} hitVecT:${Binary(VecInit(hitVecT).asUInt)}\n")
     XSDebug(stageDelay(0).valid, p"[l1] l1Hit:${hit} l1HitPPN:0x${Hexadecimal(hitPPN)} hitVec:${VecInit(hitVec).asUInt}\n")
@@ -328,7 +328,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
     val vVec_delay = RegEnable(vVec_req, stageReq.fire)
     val hVec_delay = RegEnable(hVec_req, stageReq.fire)
     val hitVec_delay = VecInit(data_resp.zip(vVec_delay.asBools).zip(hVec_delay).map { case ((wayData, v), h) =>
-      wayData.entries.hit(delay_vpn, io.csr_dup(1).satp.asid, io.csr_dup(1).hgatp.asid, s2xlate = delay_h =/= noS2xlate) && v && (delay_h === h)})
+      wayData.entries.hit(delay_vpn, io.csr_dup(1).satp.asid, io.csr_dup(1).vsatp.asid, io.csr_dup(1).hgatp.asid, s2xlate = delay_h =/= noS2xlate) && v && (delay_h === h)})
 
     // check hit and ecc
     val check_vpn = stageCheck(0).bits.req_info.vpn
@@ -380,7 +380,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
     val vVec_delay = RegEnable(vVec_req, stageReq.fire)
     val hVec_delay = RegEnable(hVec_req, stageReq.fire)
     val hitVec_delay = VecInit(data_resp.zip(vVec_delay.asBools).zip(hVec_delay).map { case ((wayData, v), h) =>
-      wayData.entries.hit(delay_vpn, io.csr_dup(2).satp.asid, io.csr_dup(2).hgatp.asid, s2xlate = delay_h =/= noS2xlate) && v && (delay_h === h)})
+      wayData.entries.hit(delay_vpn, io.csr_dup(2).satp.asid, io.csr_dup(2).vsatp.asid, io.csr_dup(2).hgatp.asid, s2xlate = delay_h =/= noS2xlate) && v && (delay_h === h)})
 
     // check hit and ecc
     val check_vpn = stageCheck(0).bits.req_info.vpn
@@ -418,7 +418,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
   // super page
   val spreplace = ReplacementPolicy.fromString(l2tlbParams.spReplacer, l2tlbParams.spSize)
   val (spHit, spHitData, spPre, spValid) = {
-    val hitVecT = sp.zipWithIndex.map { case (e, i) => e.hit(vpn_search, Mux(h_search =/= noS2xlate, io.csr_dup(0).vsatp.asid, io.csr_dup(0).satp.asid), io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate) && spv(i) && (sph(i) === h_search) }
+    val hitVecT = sp.zipWithIndex.map { case (e, i) => e.hit(vpn_search, io.csr_dup(0).satp.asid, io.csr_dup(0).vsatp.asid, io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate) && spv(i) && (sph(i) === h_search) }
     val hitVec = hitVecT.map(RegEnable(_, stageReq.fire))
     val hitData = ParallelPriorityMux(hitVec zip sp)
     val hit = ParallelOR(hitVec)
@@ -427,7 +427,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
 
     spAccessPerf.zip(hitVec).map{ case (s, h) => s := h && stageDelay_valid_1cycle }
     for (i <- 0 until l2tlbParams.spSize) {
-      XSDebug(stageReq.fire, p"[sp] sp(${i.U}) ${sp(i)} hit:${sp(i).hit(vpn_search, Mux(h_search =/= noS2xlate, io.csr_dup(0).vsatp.asid, io.csr_dup(0).satp.asid), io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate)} spv:${spv(i)}\n")
+      XSDebug(stageReq.fire, p"[sp] sp(${i.U}) ${sp(i)} hit:${sp(i).hit(vpn_search, io.csr_dup(0).satp.asid, io.csr_dup(0).vsatp.asid, io.csr_dup(0).hgatp.asid, s2xlate = h_search =/= noS2xlate)} spv:${spv(i)}\n")
     }
     XSDebug(stageDelay_valid_1cycle, p"[sp] spHit:${hit} spHitData:${hitData} hitVec:${Binary(VecInit(hitVec).asUInt)}\n")
 
@@ -561,7 +561,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
       l1RefillPerf(i) := i.U === refillIdx
     }
 
-    XSDebug(p"[l1 refill] refillIdx:${refillIdx} refillEntry:${l1(refillIdx).genPtwEntry(refill.req_info_dup(0).vpn, io.csr_dup(0).satp.asid, memSelData(0), 0.U, prefetch = refill_prefetch_dup(0))}\n")
+    XSDebug(p"[l1 refill] refillIdx:${refillIdx} refillEntry:${l1(refillIdx).genPtwEntry(refill.req_info_dup(0).vpn, Mux(refill.req_info_dup(0).s2xlate =/= noS2xlate, io.csr_dup(0).vsatp.asid, io.csr_dup(0).satp.asid), memSelData(0), 0.U, prefetch = refill_prefetch_dup(0))}\n")
     XSDebug(p"[l1 refill] l1v:${Binary(l1v)}->${Binary(l1v | rfOH)} l1g:${Binary(l1g)}->${Binary((l1g & ~rfOH) | Mux(memPte(0).perm.g, rfOH, 0.U))}\n")
 
     refillIdx.suggestName(s"l1_refillIdx")
@@ -655,7 +655,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
     val rfOH = UIntToOH(refillIdx)
     sp(refillIdx).refill(
       refill.req_info_dup(0).vpn,
-      io.csr_dup(0).satp.asid,
+      Mux(refill.req_info_dup(0).s2xlate =/= noS2xlate, io.csr_dup(0).vsatp.asid, io.csr_dup(0).satp.asid),
       io.csr_dup(0).hgatp.asid,
       memSelData(0),
       refill.level_dup(2),
@@ -671,7 +671,7 @@ class PtwCache()(implicit p: Parameters) extends XSModule with HasPtwConst with 
       spRefillPerf(i) := i.U === refillIdx
     }
 
-    XSDebug(p"[sp refill] refillIdx:${refillIdx} refillEntry:${sp(refillIdx).genPtwEntry(refill.req_info_dup(0).vpn, io.csr_dup(0).satp.asid, memSelData(0), refill.level_dup(0), refill_prefetch_dup(0))}\n")
+    XSDebug(p"[sp refill] refillIdx:${refillIdx} refillEntry:${sp(refillIdx).genPtwEntry(refill.req_info_dup(0).vpn, Mux(refill.req_info_dup(0).s2xlate =/= noS2xlate, io.csr_dup(0).vsatp.asid, io.csr_dup(0).satp.asid), memSelData(0), refill.level_dup(0), refill_prefetch_dup(0))}\n")
     XSDebug(p"[sp refill] spv:${Binary(spv)}->${Binary(spv | rfOH)} spg:${Binary(spg)}->${Binary(spg & ~rfOH | Mux(memPte(0).perm.g, rfOH, 0.U))}\n")
 
     refillIdx.suggestName(s"sp_refillIdx")
