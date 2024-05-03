@@ -37,21 +37,6 @@ case class TLBParameters
   NWays: Int = 2,
   Replacer: Option[String] = Some("plru"),
   Associative: String = "fa", // must be fa
-
-  /* use less in dev-h, only for compile */
-  normalNSets: Int = 1, // when da or sa
-  normalNWays: Int = 8, // when fa or sa
-  superNSets: Int = 1,
-  superNWays: Int = 2,
-  normalReplacer: Option[String] = Some("random"),
-  superReplacer: Option[String] = Some("plru"),
-  normalAssociative: String = "fa", // "fa", "sa", "da", "sa" is not supported
-  superAssociative: String = "fa", // must be fa
-  normalAsVictim: Boolean = false, // when get replace from fa, store it into sram
-  sameCycle:Boolean = true,
-  missSameCycle:Boolean = false,
-  shouldBlock:Boolean = false,
-  
   outReplace: Boolean = false,
   partialStaticPMP: Boolean = false, // partial static pmp result stored in entries
   outsideRecvFlush: Boolean = false, // if outside moudle waiting for tlb recv flush pipe

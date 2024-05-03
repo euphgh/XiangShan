@@ -43,7 +43,7 @@ class BaseConfig(n: Int) extends Config((site, here, up) => {
   case ExportDebug => DebugAttachParams(protocols = Set(JTAG))
   case DebugModuleKey => Some(XSDebugModuleParams(site(XLen)))
   case JtagDTMKey => JtagDTMKey
-  case MaxHartIdBits => 2
+  case MaxHartIdBits => log2Up(n)
   case EnableJtag => true.B
 })
 
@@ -121,14 +121,6 @@ class MinimalConfig(n: Int = 1) extends Config(
           fetchi = true,
           useDmode = false,
           NWays = 4,
-          sameCycle = false,
-          missSameCycle = true,
-          normalReplacer = Some("plru"),
-          superReplacer = Some("plru"),
-          normalNWays = 4,
-          normalNSets = 1,
-          superNWays = 2,
-          shouldBlock = true
         ),
         ldtlbParameters = TLBParameters(
           name = "ldtlb",
@@ -143,12 +135,6 @@ class MinimalConfig(n: Int = 1) extends Config(
           partialStaticPMP = true,
           outsideRecvFlush = true,
           outReplace = false
-        ),
-        btlbParameters = TLBParameters(
-          name = "btlb",
-          normalNSets = 1,
-          normalNWays = 8,
-          superNWays = 2
         ),
         l2tlbParameters = L2TLBParameters(
           l1Size = 4,
@@ -379,42 +365,21 @@ class NanHuGCoreConfig(n: Int = 1) extends Config(
           name = "itlb",
           fetchi = true,
           useDmode = false,
-          sameCycle = false,
-          missSameCycle = true,
-          normalReplacer = Some("plru"),
-          superReplacer = Some("plru"),
-          normalNWays = 4,
-          normalNSets = 1,
-          superNWays = 2,
-          shouldBlock = true
+          NWays = 4,
         ),
         ldtlbParameters = TLBParameters(
           name = "ldtlb",
-          normalNSets = 16, // 6when da or sa
-          normalNWays = 1, // when fa or sa
-          normalAssociative = "sa",
-          normalReplacer = Some("setplru"),
-          superNWays = 4,
-          normalAsVictim = true,
+          NWays = 16,
           partialStaticPMP = true,
+          outsideRecvFlush = true,
           outReplace = false
         ),
         sttlbParameters = TLBParameters(
           name = "sttlb",
-          normalNSets = 16, // when da or sa
-          normalNWays = 1, // when fa or sa
-          normalAssociative = "sa",
-          normalReplacer = Some("setplru"),
-          normalAsVictim = true,
-          superNWays = 4,
+          NWays = 16,
           partialStaticPMP = true,
+          outsideRecvFlush = true,
           outReplace = false
-        ),
-        btlbParameters = TLBParameters(
-          name = "btlb",
-          normalNSets = 1,
-          normalNWays = 8,
-          superNWays = 2
         ),
         l2tlbParameters = L2TLBParameters(
           l1Size = 4,

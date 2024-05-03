@@ -176,45 +176,25 @@ case class XSCoreParameters
     name = "itlb",
     fetchi = true,
     useDmode = false,
-    sameCycle = false,
-    missSameCycle = true,
-    normalNWays = 32,
-    normalReplacer = Some("plru"),
-    superNWays = 4,
-    superReplacer = Some("plru"),
-    shouldBlock = true
+    NWays = 48,
   ),
   ldtlbParameters: TLBParameters = TLBParameters(
     name = "ldtlb",
-    normalNSets = 64,
-    normalNWays = 1,
-    normalAssociative = "sa",
-    normalReplacer = Some("setplru"),
-    superNWays = 16,
-    normalAsVictim = true,
+    NWays = 48,
     outReplace = false,
     partialStaticPMP = true,
+    outsideRecvFlush = true,
     saveLevel = true
   ),
   sttlbParameters: TLBParameters = TLBParameters(
     name = "sttlb",
-    normalNSets = 64,
-    normalNWays = 1,
-    normalAssociative = "sa",
-    normalReplacer = Some("setplru"),
-    superNWays = 16,
-    normalAsVictim = true,
+    NWays = 48,
     outReplace = false,
     partialStaticPMP = true,
+    outsideRecvFlush = true,
     saveLevel = true
   ),
   refillBothTlb: Boolean = false,
-  btlbParameters: TLBParameters = TLBParameters(
-    name = "btlb",
-    normalNSets = 1,
-    normalNWays = 64,
-    superNWays = 4,
-  ),
   l2tlbParameters: L2TLBParameters = L2TLBParameters(),
   NumPerfCounters: Int = 16,
   icacheParameters: ICacheParameters = ICacheParameters(
@@ -419,7 +399,6 @@ trait HasXSParameter {
   val ldtlbParams = coreParams.ldtlbParameters
   val ld_tlb_ports = if(coreParams.prefetcher.nonEmpty) 3 else 2
   val sttlbParams = coreParams.sttlbParameters
-  val btlbParams = coreParams.btlbParameters
   val l2tlbParams = coreParams.l2tlbParameters
   val NumPerfCounters = coreParams.NumPerfCounters
 
