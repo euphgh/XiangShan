@@ -1453,7 +1453,7 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
   if (env.AlwaysBasicDiff || env.EnableDifftest) {
     val difftest = DifftestModule(new DiffCSRState)
     difftest.coreid := csrio.hartId
-    difftest.priviledgeMode := priviledgeMode
+    difftest.privilegeMode := priviledgeMode
     difftest.mstatus := mstatus
     difftest.sstatus := mstatus & sstatusRmask
     difftest.mepc := mepc
