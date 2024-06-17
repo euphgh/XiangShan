@@ -56,16 +56,6 @@ class SimTop(implicit p: Parameters) extends Module {
   soc.io.pll0_lock := true.B
   soc.io.cacheable_check := DontCare
 
-  // soc.io.rtc_clock is a div100 of soc.io.clock
-  val rtcClockDiv = 100
-  val rtcTickCycle = rtcClockDiv / 2
-  val rtcCounter = RegInit(0.U(log2Ceil(rtcTickCycle + 1).W))
-  rtcCounter := Mux(rtcCounter === (rtcTickCycle - 1).U, 0.U, rtcCounter + 1.U)
-  val rtcClock = RegInit(false.B)
-  when (rtcCounter === 0.U) {
-    rtcClock := ~rtcClock
-  }
-
   val success = Wire(Bool())
   val jtag = Module(new SimJTAG(tickDelay=3)(p)).connect(soc.io.systemjtag.jtag, clock, reset.asBool, !reset.asBool, success)
   soc.io.systemjtag.reset := reset.asAsyncReset
